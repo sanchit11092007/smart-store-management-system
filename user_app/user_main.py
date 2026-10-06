@@ -1,5 +1,6 @@
 import os
 import shutil
+import math
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 from datetime import datetime
@@ -55,6 +56,10 @@ class SnapKartCustomerApp(tk.Tk):
         self.selected_locality = CITY_LOCALITIES[0]
         self.selected_house_address = "Flat 102, Block B"
         self.image_cache = {}
+        self.current_page = 1
+        self.page_size = 48
+        self.total_products = 0
+        self.total_pages = 1
 
         # Build Main UI Components
         self.create_top_navbar()
@@ -510,6 +515,7 @@ class SnapKartCustomerApp(tk.Tk):
 
     def select_category(self, cat):
         self.active_category = cat
+        self.current_page = 1
         self.load_categories()
         self.load_products_from_db()
 
@@ -539,7 +545,7 @@ class SnapKartCustomerApp(tk.Tk):
         tk.Label(search_box, text=" 🔍 ", bg=self.COLOR_WHITE, fg=self.COLOR_MUTED).pack(side=tk.LEFT)
         self.search_entry = tk.Entry(search_box, font=("Segoe UI", 9), bg=self.COLOR_WHITE, bd=0, fg=self.COLOR_DARK)
         self.search_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=4)
-        self.search_entry.bind("<KeyRelease>", lambda e: self.load_products_from_db())
+        self.search_entry.bind("<KeyRelease>", lambda e: self.on_search_query())
 
         tk.Button(search_box, text="Clear", font=("Segoe UI", 7), bg="#e2e8f0", bd=0, command=self.clear_search).pack(side=tk.RIGHT, padx=4)
 
@@ -555,7 +561,7 @@ class SnapKartCustomerApp(tk.Tk):
             width=16
         )
         sort_cb.pack(side=tk.LEFT)
-        sort_cb.bind("<<ComboboxSelected>>", lambda e: self.load_products_from_db())
+        sort_cb.bind("<<ComboboxSelected>>", lambda e: self.on_sort_changed())
 
         # Scrollable Product Cards Frame
         grid_container = tk.Frame(center, bg="#f8fafc")
@@ -576,8 +582,71 @@ class SnapKartCustomerApp(tk.Tk):
         self.grid_canvas.bind("<Enter>", lambda e: self._bind_mousewheel(self.grid_canvas))
         self.grid_canvas.bind("<Leave>", lambda e: self._unbind_mousewheel())
 
+        # Pagination Bar
+        self.pagination_frame = tk.Frame(center, bg="#f8fafc", pady=4)
+        self.pagination_frame.pack(fill=tk.X, side=tk.BOTTOM)
+
+        self.btn_prev_page = tk.Button(
+            self.pagination_frame,
+            text="◀ Previous Page",
+            font=("Segoe UI", 9, "bold"),
+            bg=self.COLOR_WHITE,
+            fg=self.COLOR_DARK,
+            bd=1,
+            relief=tk.SOLID,
+            padx=12,
+            pady=4,
+            cursor="hand2",
+            command=self.prev_catalog_page
+        )
+        self.btn_prev_page.pack(side=tk.LEFT, padx=10)
+
+        self.lbl_page_info = tk.Label(
+            self.pagination_frame,
+            text="Showing 0 products",
+            font=("Segoe UI", 9, "bold"),
+            bg="#f8fafc",
+            fg=self.COLOR_DARK
+        )
+        self.lbl_page_info.pack(side=tk.LEFT, expand=True)
+
+        self.btn_next_page = tk.Button(
+            self.pagination_frame,
+            text="Next Page ▶",
+            font=("Segoe UI", 9, "bold"),
+            bg=self.COLOR_GREEN,
+            fg="#ffffff",
+            bd=0,
+            padx=14,
+            pady=4,
+            cursor="hand2",
+            command=self.next_catalog_page
+        )
+        self.btn_next_page.pack(side=tk.RIGHT, padx=10)
+
+    def on_search_query(self):
+        self.current_page = 1
+        self.load_products_from_db()
+
+    def on_sort_changed(self):
+        self.current_page = 1
+        self.load_products_from_db()
+
+    def prev_catalog_page(self):
+        if self.current_page > 1:
+            self.current_page -= 1
+            self.load_products_from_db()
+            self.grid_canvas.yview_moveto(0)
+
+    def next_catalog_page(self):
+        if self.current_page < self.total_pages:
+            self.current_page += 1
+            self.load_products_from_db()
+            self.grid_canvas.yview_moveto(0)
+
     def clear_search(self):
         self.search_entry.delete(0, tk.END)
+        self.current_page = 1
         self.load_products_from_db()
 
     def load_products_from_db(self):
@@ -592,6 +661,24 @@ class SnapKartCustomerApp(tk.Tk):
             cursor = conn.cursor(dictionary=True)
             search_txt = self.search_entry.get().strip()
 
+            # 1. Total Count for Pagination
+            count_sql = "SELECT COUNT(*) AS total FROM inventory WHERE stock_quantity > 0"
+            count_params = []
+            if self.active_category != "All Products":
+                count_sql += " AND category = %s"
+                count_params.append(self.active_category)
+            if search_txt:
+                count_sql += " AND name LIKE %s"
+                count_params.append(f"%{search_txt}%")
+
+            cursor.execute(count_sql, count_params)
+            count_row = cursor.fetchone()
+            self.total_products = count_row["total"] if count_row else 0
+            self.total_pages = max(1, math.ceil(self.total_products / self.page_size))
+            self.current_page = max(1, min(self.current_page, self.total_pages))
+            offset = (self.current_page - 1) * self.page_size
+
+            # 2. Main Paginated Catalog Query
             query = "SELECT item_id, name, category, price, stock_quantity FROM inventory WHERE stock_quantity > 0"
             params = []
 
@@ -605,16 +692,54 @@ class SnapKartCustomerApp(tk.Tk):
 
             sort_mode = self.sort_option.get()
             if sort_mode == "Price: Low to High":
-                query += " ORDER BY price ASC"
+                query += " ORDER BY price ASC, item_id ASC"
             elif sort_mode == "Price: High to Low":
-                query += " ORDER BY price DESC"
+                query += " ORDER BY price DESC, item_id ASC"
             else:
-                query += " ORDER BY item_id ASC"
+                if self.active_category == "All Products":
+                    query += """ ORDER BY 
+                        CASE 
+                            WHEN category = 'Fresh Fruits & Berries' THEN 1
+                            WHEN category = 'Dairy, Milk & Paneer' THEN 2
+                            WHEN category = 'Fresh Vegetables & Greens' THEN 3
+                            WHEN category = 'Bakery & Breakfast' THEN 4
+                            WHEN category = 'Snacks, Chips & Namkeen' THEN 5
+                            WHEN category = 'Chocolates, Sweets & Biscuits' THEN 6
+                            WHEN category = 'Tea, Coffee & Beverages' THEN 7
+                            WHEN category = 'Grocery & Staples' THEN 8
+                            WHEN category = 'Ready to Eat' THEN 9
+                            WHEN category = 'Personal Care & Grooming' THEN 10
+                            WHEN category = 'Health, Wellness & Supplements' THEN 11
+                            WHEN category = 'Household & Cleaning' THEN 12
+                            WHEN category = 'Home & Kitchenware' THEN 13
+                            WHEN category = 'Sports & Fitness' THEN 14
+                            WHEN category = 'Stationery & Office Supplies' THEN 15
+                            WHEN category = 'Clothing & Fashion' THEN 16
+                            WHEN category = 'Girls Accessories & Makeup' THEN 17
+                            WHEN category = 'Tech & Mobile Accessories' THEN 18
+                            WHEN category = 'Seasonal, Pooja & Festival' THEN 19
+                            WHEN category = 'All Medicines & First Aid' THEN 20
+                            ELSE 21
+                        END ASC, item_id ASC"""
+                else:
+                    query += " ORDER BY item_id ASC"
 
-            query += " LIMIT 60;"
+            query += " LIMIT %s OFFSET %s;"
+            params.extend([self.page_size, offset])
+
             cursor.execute(query, params)
             products = cursor.fetchall()
             cursor.close()
+
+            # Update pagination display
+            start_num = offset + 1 if self.total_products > 0 else 0
+            end_num = min(offset + len(products), self.total_products)
+            self.lbl_page_info.config(
+                text=f"Page {self.current_page} of {self.total_pages}  (Showing {start_num} - {end_num} of {self.total_products:,} items)"
+            )
+            self.btn_prev_page.config(state=tk.NORMAL if self.current_page > 1 else tk.DISABLED)
+            self.btn_next_page.config(state=tk.NORMAL if self.current_page < self.total_pages else tk.DISABLED)
+
         except Exception as e:
             print(f"Error loading products: {e}")
             products = []
@@ -629,13 +754,13 @@ class SnapKartCustomerApp(tk.Tk):
             self.create_single_product_card(self.cards_frame, prod, r, c)
 
     def create_single_product_card(self, parent, prod, r, c):
-        card = tk.Frame(parent, bg=self.COLOR_WHITE, bd=1, relief=tk.SOLID, width=225, height=270)
+        card = tk.Frame(parent, bg=self.COLOR_WHITE, bd=1, relief=tk.SOLID, width=225, height=275)
         card.grid(row=r, column=c, padx=6, pady=6, sticky="nsew")
         card.grid_propagate(False)
 
         # 1. Product Image Rendering
         p_id = prod["item_id"]
-        photo = get_product_image(p_id, prod["name"], prod["category"], size=(210, 105))
+        photo = get_product_image(p_id, prod["name"], prod["category"], size=(210, 110))
         self.image_cache[p_id] = photo
 
         img_label = tk.Label(card, image=photo, bg=self.COLOR_WHITE)
