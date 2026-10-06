@@ -1,24 +1,29 @@
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import ttk, messagebox, filedialog
 from datetime import datetime
+import shutil
 
-from database.db_connection import get_db_connection
+from database.db_connection import get_db_connection, ensure_core_schema
 from common.store_status import check_store_status
-from common.utils import format_receipt, save_receipt_file
+from common.pdf_generator import generate_pdf_receipt, open_pdf_file
 from common.image_loader import get_product_image
 from user_app.auth_ui import AuthDialog
+from user_app.upi_payment_dialog import UPIPaymentDialog
 
 
 class SnapKartCustomerApp(tk.Tk):
     def __init__(self):
         super().__init__()
 
+        # Ensure database schema is up to date before any queries
+        ensure_core_schema()
+
         self.title("SnapKart - Your Neighbourhood Store, Online")
         self.geometry("1420x890")
         self.minsize(1220, 750)
         self.configure(bg="#f8fafc")
 
-        # Color theme
+        # Color Palette
         self.COLOR_GREEN = "#16a34a"
         self.COLOR_GREEN_LIGHT = "#dcfce7"
         self.COLOR_DARK = "#0f172a"
@@ -26,14 +31,14 @@ class SnapKartCustomerApp(tk.Tk):
         self.COLOR_WHITE = "#ffffff"
         self.COLOR_RED = "#dc2626"
 
-        # App State
+        # Application State
         self.current_user = None
         self.cart = {}
         self.active_category = "All Products"
         self.sort_option = tk.StringVar(value="Popularity")
-        self.image_cache = {}  # Keeps image references alive in memory
+        self.image_cache = {}  # Keeps image references alive to prevent garbage collection
 
-        # Build UI
+        # Build UI Components
         self.create_top_navbar()
 
         self.body_frame = tk.Frame(self, bg="#f8fafc")
@@ -45,27 +50,32 @@ class SnapKartCustomerApp(tk.Tk):
 
         self.create_bottom_footer()
 
-        # Start live checks
+        # Initial Status and Data Fetch
         self.refresh_store_status()
         self.load_products_from_db()
 
-    # ==================== 1. TOP NAVBAR ====================
+    # =========================================================================
+    # 1. TOP NAVIGATION BAR
+    # =========================================================================
     def create_top_navbar(self):
         nav = tk.Frame(self, bg=self.COLOR_WHITE, height=64, bd=1, relief=tk.SOLID)
         nav.pack(fill=tk.X, side=tk.TOP)
         nav.pack_propagate(False)
 
+        # Brand Title
         brand_box = tk.Frame(nav, bg=self.COLOR_WHITE)
         brand_box.pack(side=tk.LEFT, padx=18)
         tk.Label(brand_box, text="🛒 SnapKart", font=("Segoe UI", 16, "bold"), fg=self.COLOR_GREEN, bg=self.COLOR_WHITE).pack(anchor="w")
         tk.Label(brand_box, text="Your Neighbourhood Store, Online", font=("Segoe UI", 7), fg=self.COLOR_MUTED, bg=self.COLOR_WHITE).pack(anchor="w")
 
+        # Navigation Links
         mid_links = tk.Frame(nav, bg=self.COLOR_WHITE)
         mid_links.pack(side=tk.LEFT, padx=25)
         for idx, text in enumerate(["🏠 Home", "🛍️ Shop", "🏷️ Offers", "📦 Track Order", "❓ Help"]):
             fg_col = self.COLOR_GREEN if idx == 0 else self.COLOR_DARK
             tk.Label(mid_links, text=text, font=("Segoe UI", 9, "bold" if idx == 0 else "normal"), fg=fg_col, bg=self.COLOR_WHITE, padx=8, cursor="hand2").pack(side=tk.LEFT)
 
+        # Right-side Account Controls
         right_box = tk.Frame(nav, bg=self.COLOR_WHITE)
         right_box.pack(side=tk.RIGHT, padx=18)
 
@@ -100,7 +110,9 @@ class SnapKartCustomerApp(tk.Tk):
         self.lbl_user_name.config(text=f"Hello, {first_name} 👋")
         self.lbl_user_action.config(text="Log Out", fg=self.COLOR_RED)
 
-    # ==================== 2. LEFT SIDEBAR ====================
+    # =========================================================================
+    # 2. LEFT SIDEBAR: STORE STATUS & CATEGORIES
+    # =========================================================================
     def create_left_sidebar(self, parent):
         sidebar = tk.Frame(parent, bg="#f8fafc", width=235)
         sidebar.pack(side=tk.LEFT, fill=tk.Y, padx=(0, 10))
@@ -129,22 +141,26 @@ class SnapKartCustomerApp(tk.Tk):
         for perk in ["✨ Fresh Products", "⚡ Quick Delivery", "🔒 Secure Payments", "💰 Best Daily Prices"]:
             tk.Label(self.status_card, text=perk, font=("Segoe UI", 7), fg=self.COLOR_MUTED, bg=self.COLOR_WHITE, anchor="w").pack(fill=tk.X, padx=14, pady=1)
 
-        # Categories Card
+        # Categories Menu Box
         cat_box = tk.Frame(sidebar, bg=self.COLOR_WHITE, bd=1, relief=tk.SOLID)
         cat_box.pack(fill=tk.BOTH, expand=True)
 
         tk.Label(cat_box, text="Categories", font=("Segoe UI", 10, "bold"), fg=self.COLOR_DARK, bg=self.COLOR_WHITE).pack(anchor="w", padx=10, pady=(8, 4))
 
-        cat_canvas = tk.Canvas(cat_box, bg=self.COLOR_WHITE, bd=0, highlightthickness=0)
-        cat_scroll = ttk.Scrollbar(cat_box, orient="vertical", command=cat_canvas.yview)
-        self.cat_inner = tk.Frame(cat_canvas, bg=self.COLOR_WHITE)
+        self.cat_canvas = tk.Canvas(cat_box, bg=self.COLOR_WHITE, bd=0, highlightthickness=0)
+        cat_scroll = ttk.Scrollbar(cat_box, orient="vertical", command=self.cat_canvas.yview)
+        self.cat_inner = tk.Frame(self.cat_canvas, bg=self.COLOR_WHITE)
 
-        cat_canvas.create_window((0, 0), window=self.cat_inner, anchor="nw")
-        self.cat_inner.bind("<Configure>", lambda e: cat_canvas.configure(scrollregion=cat_canvas.bbox("all")))
+        self.cat_canvas.create_window((0, 0), window=self.cat_inner, anchor="nw")
+        self.cat_inner.bind("<Configure>", lambda e: self.cat_canvas.configure(scrollregion=self.cat_canvas.bbox("all")))
 
-        cat_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(2, 0))
+        self.cat_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(2, 0))
         cat_scroll.pack(side=tk.RIGHT, fill=tk.Y)
-        cat_canvas.configure(yscrollcommand=cat_scroll.set)
+        self.cat_canvas.configure(yscrollcommand=cat_scroll.set)
+
+        # Mousewheel support for categories
+        self.cat_canvas.bind("<Enter>", lambda e: self._bind_mousewheel(self.cat_canvas))
+        self.cat_canvas.bind("<Leave>", lambda e: self._unbind_mousewheel())
 
         self.load_categories()
 
@@ -155,11 +171,16 @@ class SnapKartCustomerApp(tk.Tk):
         conn = get_db_connection()
         categories = ["All Products"]
         if conn:
-            cursor = conn.cursor()
-            cursor.execute("SELECT DISTINCT category FROM inventory ORDER BY category;")
-            categories += [row[0] for row in cursor.fetchall()]
-            cursor.close()
-            conn.close()
+            try:
+                cursor = conn.cursor()
+                cursor.execute("SELECT DISTINCT category FROM inventory ORDER BY category;")
+                categories += [row[0] for row in cursor.fetchall()]
+                cursor.close()
+            except Exception:
+                pass
+            finally:
+                if conn.is_connected():
+                    conn.close()
 
         for cat in categories:
             is_active = (cat == self.active_category)
@@ -186,12 +207,14 @@ class SnapKartCustomerApp(tk.Tk):
         self.load_categories()
         self.load_products_from_db()
 
-    # ==================== 3. CENTER CATALOG ====================
+    # =========================================================================
+    # 3. CENTER CATALOG: BANNER, SEARCH, SORT & PRODUCT GRID
+    # =========================================================================
     def create_center_catalog(self, parent):
         center = tk.Frame(parent, bg="#f8fafc")
         center.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 10))
 
-        # Promo Banner
+        # Promotional Banner
         banner = tk.Frame(center, bg="#e0f2fe", bd=1, relief=tk.SOLID)
         banner.pack(fill=tk.X, pady=(0, 8), ipady=6)
 
@@ -200,11 +223,10 @@ class SnapKartCustomerApp(tk.Tk):
         tk.Label(b_text, text="FRESHER. FASTER. CLOSER TO YOU.", font=("Segoe UI", 7, "bold"), fg="#0284c7", bg="#e0f2fe").pack(anchor="w")
         tk.Label(b_text, text="Everything You Need, Just a Few Clicks Away!", font=("Segoe UI", 12, "bold"), fg="#0f172a", bg="#e0f2fe").pack(anchor="w")
 
-        # Search Bar + Sort Dropdown Row
+        # Search Bar and Sort Options
         top_filter_row = tk.Frame(center, bg="#f8fafc")
         top_filter_row.pack(fill=tk.X, pady=(0, 8))
 
-        # Search box
         search_box = tk.Frame(top_filter_row, bg=self.COLOR_WHITE, bd=1, relief=tk.SOLID)
         search_box.pack(side=tk.LEFT, fill=tk.X, expand=True, ipady=3)
 
@@ -215,7 +237,6 @@ class SnapKartCustomerApp(tk.Tk):
 
         tk.Button(search_box, text="Clear", font=("Segoe UI", 7), bg="#e2e8f0", bd=0, command=self.clear_search).pack(side=tk.RIGHT, padx=4)
 
-        # Sort Dropdown
         sort_frame = tk.Frame(top_filter_row, bg="#f8fafc")
         sort_frame.pack(side=tk.RIGHT, padx=(10, 0))
         tk.Label(sort_frame, text="Sort by: ", font=("Segoe UI", 8), bg="#f8fafc", fg=self.COLOR_MUTED).pack(side=tk.LEFT)
@@ -230,7 +251,7 @@ class SnapKartCustomerApp(tk.Tk):
         sort_cb.pack(side=tk.LEFT)
         sort_cb.bind("<<ComboboxSelected>>", lambda e: self.load_products_from_db())
 
-        # Scrollable Product Cards
+        # Scrollable Product Cards Frame
         grid_container = tk.Frame(center, bg="#f8fafc")
         grid_container.pack(fill=tk.BOTH, expand=True)
 
@@ -246,6 +267,10 @@ class SnapKartCustomerApp(tk.Tk):
         self.grid_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         grid_scroll.pack(side=tk.RIGHT, fill=tk.Y)
 
+        # Mousewheel support for product grid
+        self.grid_canvas.bind("<Enter>", lambda e: self._bind_mousewheel(self.grid_canvas))
+        self.grid_canvas.bind("<Leave>", lambda e: self._unbind_mousewheel())
+
     def clear_search(self):
         self.search_entry.delete(0, tk.END)
         self.load_products_from_db()
@@ -258,36 +283,41 @@ class SnapKartCustomerApp(tk.Tk):
         if not conn:
             return
 
-        cursor = conn.cursor(dictionary=True)
-        search_txt = self.search_entry.get().strip()
+        try:
+            cursor = conn.cursor(dictionary=True)
+            search_txt = self.search_entry.get().strip()
 
-        query = "SELECT item_id, name, category, price, stock_quantity FROM inventory WHERE stock_quantity > 0"
-        params = []
+            query = "SELECT item_id, name, category, price, stock_quantity FROM inventory WHERE stock_quantity > 0"
+            params = []
 
-        if self.active_category != "All Products":
-            query += " AND category = %s"
-            params.append(self.active_category)
+            if self.active_category != "All Products":
+                query += " AND category = %s"
+                params.append(self.active_category)
 
-        if search_txt:
-            query += " AND name LIKE %s"
-            params.append(f"%{search_txt}%")
+            if search_txt:
+                query += " AND name LIKE %s"
+                params.append(f"%{search_txt}%")
 
-        # Sorting
-        sort_mode = self.sort_option.get()
-        if sort_mode == "Price: Low to High":
-            query += " ORDER BY price ASC"
-        elif sort_mode == "Price: High to Low":
-            query += " ORDER BY price DESC"
-        else:
-            query += " ORDER BY item_id ASC"
+            sort_mode = self.sort_option.get()
+            if sort_mode == "Price: Low to High":
+                query += " ORDER BY price ASC"
+            elif sort_mode == "Price: High to Low":
+                query += " ORDER BY price DESC"
+            else:
+                query += " ORDER BY item_id ASC"
 
-        query += " LIMIT 30;"
-        cursor.execute(query, params)
-        products = cursor.fetchall()
-        cursor.close()
-        conn.close()
+            query += " LIMIT 30;"
+            cursor.execute(query, params)
+            products = cursor.fetchall()
+            cursor.close()
+        except Exception as e:
+            print(f"Error loading products: {e}")
+            products = []
+        finally:
+            if conn.is_connected():
+                conn.close()
 
-        # Render 3 items per row
+        # Render 3 Cards Per Row
         for idx, prod in enumerate(products):
             r = idx // 3
             c = idx % 3
@@ -298,29 +328,37 @@ class SnapKartCustomerApp(tk.Tk):
         card.grid(row=r, column=c, padx=6, pady=6, sticky="nsew")
         card.grid_propagate(False)
 
-        # 1. Product Image at Top
+        # 1. Product Image Rendering
         p_id = prod["item_id"]
-        # Save image to self.image_cache so Python does NOT delete it
         photo = get_product_image(p_id, prod["name"], prod["category"], size=(210, 105))
         self.image_cache[p_id] = photo
 
         img_label = tk.Label(card, image=photo, bg=self.COLOR_WHITE)
         img_label.pack(fill=tk.X, padx=5, pady=(5, 3))
 
-        # 2. Tag and Stock Row
+        # 2. Tag and Stock Indicator
         tag_row = tk.Frame(card, bg=self.COLOR_WHITE)
         tag_row.pack(fill=tk.X, padx=8, pady=(2, 2))
-        tk.Label(tag_row, text="Bestseller", font=("Segoe UI", 7, "bold"), bg="#fee2e2", fg="#dc2626", padx=4).pack(side=tk.LEFT)
-        tk.Label(tag_row, text=f"Stock: {prod['stock_quantity']}", font=("Segoe UI", 7), fg=self.COLOR_MUTED, bg=self.COLOR_WHITE).pack(side=tk.RIGHT)
 
-        # 3. Product Name & Category
+        stock_qty = prod['stock_quantity']
+        if stock_qty < 20:
+            stock_fg = self.COLOR_RED
+            stock_text = f"Low Stock: {stock_qty}"
+        else:
+            stock_fg = self.COLOR_MUTED
+            stock_text = f"Stock: {stock_qty}"
+
+        tk.Label(tag_row, text="Bestseller", font=("Segoe UI", 7, "bold"), bg="#fee2e2", fg="#dc2626", padx=4).pack(side=tk.LEFT)
+        tk.Label(tag_row, text=stock_text, font=("Segoe UI", 7), fg=stock_fg, bg=self.COLOR_WHITE).pack(side=tk.RIGHT)
+
+        # 3. Product Details
         name_lbl = tk.Label(card, text=prod["name"], font=("Segoe UI", 9, "bold"), fg=self.COLOR_DARK, bg=self.COLOR_WHITE, wraplength=205, justify="left")
         name_lbl.pack(anchor="w", padx=8, pady=(4, 0))
 
         cat_lbl = tk.Label(card, text=prod["category"], font=("Segoe UI", 7), fg=self.COLOR_MUTED, bg=self.COLOR_WHITE)
         cat_lbl.pack(anchor="w", padx=8)
 
-        # 4. Price & Add to Cart Button
+        # 4. Pricing and Add to Cart Button
         bot_row = tk.Frame(card, bg=self.COLOR_WHITE)
         bot_row.pack(side=tk.BOTTOM, fill=tk.X, padx=8, pady=8)
 
@@ -341,7 +379,9 @@ class SnapKartCustomerApp(tk.Tk):
         )
         btn_add.pack(side=tk.RIGHT)
 
-    # ==================== 4. RIGHT CART PANEL ====================
+    # =========================================================================
+    # 4. RIGHT SIDEBAR: CART CONTAINER
+    # =========================================================================
     def create_right_cart_panel(self, parent):
         self.cart_panel = tk.Frame(parent, bg=self.COLOR_WHITE, width=320, bd=1, relief=tk.SOLID)
         self.cart_panel.pack(side=tk.RIGHT, fill=tk.Y)
@@ -369,6 +409,10 @@ class SnapKartCustomerApp(tk.Tk):
 
         self.cart_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         c_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+
+        # Mousewheel support for cart
+        self.cart_canvas.bind("<Enter>", lambda e: self._bind_mousewheel(self.cart_canvas))
+        self.cart_canvas.bind("<Leave>", lambda e: self._unbind_mousewheel())
 
         summary_box = tk.Frame(self.cart_panel, bg="#f8fafc", bd=1, relief=tk.SOLID)
         summary_box.pack(fill=tk.X, padx=10, pady=(4, 6), ipady=4)
@@ -400,6 +444,9 @@ class SnapKartCustomerApp(tk.Tk):
         val_lbl.pack(side=tk.RIGHT)
         return val_lbl
 
+    # =========================================================================
+    # 5. CART INTERACTION HANDLERS
+    # =========================================================================
     def add_to_cart(self, prod):
         p_id = prod["item_id"]
         if p_id in self.cart:
@@ -473,7 +520,9 @@ class SnapKartCustomerApp(tk.Tk):
         self.lbl_delivery.config(text=f"₹ {delivery_fee:.2f}")
         self.lbl_total.config(text=f"₹ {total_bill:,.2f}")
 
-    # ==================== 5. CHECKOUT ENGINE ====================
+    # =========================================================================
+    # 6. BUSINESS HOURS AWARE CHECKOUT & SIMULATED UPI FLOW
+    # =========================================================================
     def refresh_store_status(self):
         is_open, msg = check_store_status()
         if is_open:
@@ -484,17 +533,19 @@ class SnapKartCustomerApp(tk.Tk):
             self.btn_checkout.config(state=tk.DISABLED, bg="#94a3b8", text="⛔ Store is Closed")
 
     def process_order_checkout(self):
+        # 1. Store Hours Gatekeeper
         is_open, status_msg = check_store_status()
         if not is_open:
             messagebox.showerror("Transaction Locked", f"Store is currently closed!\n\n{status_msg}")
             self.refresh_store_status()
             return
 
+        # 2. Check Empty Cart
         if not self.cart:
             messagebox.showwarning("Empty Cart", "Your cart is empty!")
             return
 
-        # Recommend Login for guests
+        # 3. Recommend Sign In for Guests
         if self.current_user is None:
             if messagebox.askyesno("Sign In Recommended", "You are checking out as Guest.\n\nWould you like to Log In or Sign Up first?"):
                 AuthDialog(self, on_login_success=self.on_user_logged_in)
@@ -504,27 +555,34 @@ class SnapKartCustomerApp(tk.Tk):
         total_bill = subtotal + 20.0
         cust_name = self.current_user["full_name"] if self.current_user else "Guest Customer"
 
-        if not messagebox.askyesno("Confirm Order", f"Customer: {cust_name}\nTotal: ₹ {total_bill:,.2f}\n\nConfirm purchase?"):
-            return
+        # 4. Open Simulated UPI Payment Gateway
+        UPIPaymentDialog(
+            parent=self,
+            total_amount=total_bill,
+            customer_name=cust_name,
+            on_payment_success=lambda: self.complete_order_and_download(subtotal, total_bill, cust_name)
+        )
 
+    def complete_order_and_download(self, subtotal, total_bill, cust_name):
         conn = get_db_connection()
         if not conn:
             messagebox.showerror("Error", "Could not connect to MySQL database.")
             return
 
+        cursor = None
         try:
             cursor = conn.cursor()
             now = datetime.now()
             cust_id = self.current_user["customer_id"] if self.current_user else None
 
-            # 1. Insert Sale into MySQL
+            # 1. Insert Transaction into MySQL
             cursor.execute(
                 "INSERT INTO sales (sale_datetime, total_amount, payment_method, customer_id) VALUES (%s, %s, %s, %s)",
                 (now, total_bill, "UPI", cust_id)
             )
             sale_id = cursor.lastrowid
 
-            # 2. Insert items and reduce stock in MySQL
+            # 2. Insert Items and Deduct Inventory Stock
             for p_id, item in self.cart.items():
                 item_sub = item["price"] * item["qty"]
                 cursor.execute(
@@ -532,37 +590,87 @@ class SnapKartCustomerApp(tk.Tk):
                     (sale_id, p_id, item["qty"], item["price"], item_sub)
                 )
                 cursor.execute(
-                    "UPDATE inventory SET stock_quantity = stock_quantity - %s WHERE item_id = %s",
+                    "UPDATE inventory SET stock_quantity = GREATEST(stock_quantity - %s, 0) WHERE item_id = %s",
                     (item["qty"], p_id)
                 )
 
             conn.commit()
-            cursor.close()
-            conn.close()
 
-            # 3. Format and save receipt
-            receipt_str = format_receipt(
+            # 3. Prompt User for Printable Receipt Download
+            ask_download = messagebox.askyesno(
+                "Payment Successful! 🎉",
+                f"UPI Payment of ₹ {total_bill:,.2f} was successful!\n\n"
+                f"Invoice ID: #{sale_id}\n\n"
+                "Would you like to download your printable bill receipt now?"
+            )
+
+            # Generate Standard PDF in receipts/
+            default_pdf = generate_pdf_receipt(
                 sale_id=sale_id,
                 items_dict=self.cart,
                 subtotal=subtotal,
                 delivery_fee=20.0,
                 total_amount=total_bill,
+                customer_name=cust_name,
                 payment_method="UPI"
             )
-            saved_file = save_receipt_file(sale_id, receipt_str)
 
-            messagebox.showinfo(
-                "Order Successful! 🎉",
-                f"Thank you, {cust_name}!\n\nInvoice: #{sale_id}\nSaved to: {saved_file}\nAmount: ₹ {total_bill:,.2f}"
-            )
+            if ask_download:
+                chosen_file_path = filedialog.asksaveasfilename(
+                    initialfile=f"SnapKart_Invoice_{sale_id}.pdf",
+                    defaultextension=".pdf",
+                    filetypes=[("PDF Document", "*.pdf"), ("All Files", "*.*")],
+                    title="Download Your SnapKart Bill"
+                )
 
+                if chosen_file_path:
+                    shutil.copyfile(default_pdf, chosen_file_path)
+                    messagebox.showinfo(
+                        "Download Complete",
+                        f"Your bill has been downloaded successfully to:\n{chosen_file_path}"
+                    )
+                    open_pdf_file(chosen_file_path)
+                else:
+                    open_pdf_file(default_pdf)
+            else:
+                open_pdf_file(default_pdf)
+
+            # Refresh Catalog and Reset Cart
             self.clear_cart()
             self.load_products_from_db()
 
         except Exception as e:
             messagebox.showerror("Checkout Error", f"Transaction failed: {e}")
+        finally:
+            if cursor is not None:
+                try:
+                    cursor.close()
+                except Exception:
+                    pass
+            if conn and conn.is_connected():
+                conn.close()
 
-    # ==================== 6. FOOTER ====================
+    # =========================================================================
+    # 7. MOUSEWHEEL SUPPORT
+    # =========================================================================
+    def _bind_mousewheel(self, canvas):
+        """Bind mousewheel scrolling to the given canvas."""
+        self._active_canvas = canvas
+        self.bind_all("<MouseWheel>", self._on_mousewheel)
+
+    def _unbind_mousewheel(self):
+        """Unbind mousewheel scrolling."""
+        self.unbind_all("<MouseWheel>")
+        self._active_canvas = None
+
+    def _on_mousewheel(self, event):
+        """Handle mousewheel scroll events."""
+        if hasattr(self, '_active_canvas') and self._active_canvas:
+            self._active_canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+
+    # =========================================================================
+    # 8. FOOTER
+    # =========================================================================
     def create_bottom_footer(self):
         footer = tk.Frame(self, bg=self.COLOR_WHITE, height=34, bd=1, relief=tk.SOLID)
         footer.pack(fill=tk.X, side=tk.BOTTOM)

@@ -1,15 +1,17 @@
+import os
 import mysql.connector
 from mysql.connector import Error
 
-# Server config without database selected yet
 ROOT_CONFIG = {
-    'host': 'localhost',
-    'user': 'root',
-    'password': 'Sanc@2007'
+    'host': os.environ.get('SNAPKART_DB_HOST', 'localhost'),
+    'user': os.environ.get('SNAPKART_DB_USER', 'root'),
+    'password': os.environ.get('SNAPKART_DB_PASSWORD', os.environ.get('SNAPKART_DB_PASSW', 'Sanc@2007'))
 }
 
 
 def create_database_and_tables():
+    cursor = None
+    conn = None
     try:
         conn = mysql.connector.connect(**ROOT_CONFIG)
         cursor = conn.cursor()
@@ -56,12 +58,27 @@ def create_database_and_tables():
         );
         """)
 
+        # Create customers Table
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS customers (
+            customer_id INT AUTO_INCREMENT PRIMARY KEY,
+            full_name VARCHAR(100) NOT NULL,
+            email VARCHAR(120) UNIQUE NOT NULL,
+            phone VARCHAR(20),
+            password_hash VARCHAR(255) NOT NULL,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+        """)
+
         # Create sales Table
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS sales (
             sale_id INT AUTO_INCREMENT PRIMARY KEY,
             sale_datetime DATETIME NOT NULL,
-            total_amount DECIMAL(10, 2) NOT NULL
+            total_amount DECIMAL(10, 2) NOT NULL,
+            payment_method VARCHAR(50) DEFAULT 'UPI',
+            customer_id INT NULL,
+            FOREIGN KEY (customer_id) REFERENCES customers(customer_id) ON DELETE SET NULL
         );
         """)
 
@@ -75,17 +92,20 @@ def create_database_and_tables():
             unit_price DECIMAL(10, 2) NOT NULL,
             subtotal DECIMAL(10, 2) NOT NULL,
             FOREIGN KEY (sale_id) REFERENCES sales(sale_id) ON DELETE CASCADE,
-            FOREIGN KEY (item_id) REFERENCES inventory(item_id)
+            FOREIGN KEY (item_id) REFERENCES inventory(item_id) ON DELETE CASCADE
         );
         """)
 
         conn.commit()
         print("All tables created successfully!")
-        cursor.close()
-        conn.close()
 
     except Error as e:
         print(f"Error during setup: {e}")
+    finally:
+        if cursor:
+            cursor.close()
+        if conn and conn.is_connected():
+            conn.close()
 
 
 if __name__ == "__main__":

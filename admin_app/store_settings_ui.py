@@ -127,23 +127,30 @@ class StoreSettingsFrame(ttk.Frame):
             messagebox.showerror("Error", "Could not connect to database.")
             return
 
-        cursor = conn.cursor(dictionary=True)
-        cursor.execute("SELECT day_name, open_time, close_time, is_closed_today FROM store_hours")
-        records = cursor.fetchall()
-        cursor.close()
-        conn.close()
+        cursor = None
+        try:
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute("SELECT day_name, open_time, close_time, is_closed_today FROM store_hours")
+            records = cursor.fetchall()
 
-        for rec in records:
-            day = rec["day_name"]
-            if day in self.day_entries:
-                open_entry, close_entry = self.day_entries[day]
-                open_entry.delete(0, tk.END)
-                open_entry.insert(0, str(rec["open_time"]))
+            for rec in records:
+                day = rec["day_name"]
+                if day in self.day_entries:
+                    open_entry, close_entry = self.day_entries[day]
+                    open_entry.delete(0, tk.END)
+                    open_entry.insert(0, str(rec["open_time"]))
 
-                close_entry.delete(0, tk.END)
-                close_entry.insert(0, str(rec["close_time"]))
+                    close_entry.delete(0, tk.END)
+                    close_entry.insert(0, str(rec["close_time"]))
 
-                self.closed_vars[day].set(bool(rec["is_closed_today"]))
+                    self.closed_vars[day].set(bool(rec["is_closed_today"]))
+        except Exception as e:
+            print(f"Error loading store hours: {e}")
+        finally:
+            if cursor:
+                cursor.close()
+            if conn and conn.is_connected():
+                conn.close()
 
         self.refresh_live_status()
 

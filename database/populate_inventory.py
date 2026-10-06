@@ -391,26 +391,33 @@ def insert_bulk_inventory(target_count=3000):
         print("Database connection failed. Please check db_connection.py.")
         return
 
-    cursor = conn.cursor()
+    cursor = None
+    try:
+        cursor = conn.cursor()
 
-    cursor.execute("SET FOREIGN_KEY_CHECKS = 0;")
-    cursor.execute("TRUNCATE TABLE sale_items;")
-    cursor.execute("TRUNCATE TABLE sales;")
-    cursor.execute("TRUNCATE TABLE inventory;")
-    cursor.execute("SET FOREIGN_KEY_CHECKS = 1;")
+        cursor.execute("SET FOREIGN_KEY_CHECKS = 0;")
+        cursor.execute("TRUNCATE TABLE sale_items;")
+        cursor.execute("TRUNCATE TABLE sales;")
+        cursor.execute("TRUNCATE TABLE inventory;")
+        cursor.execute("SET FOREIGN_KEY_CHECKS = 1;")
 
-    items = generate_items(target_count)
+        items = generate_items(target_count)
 
-    insert_query = """
-        INSERT INTO inventory (name, category, price, stock_quantity)
-        VALUES (%s, %s, %s, %s)
-    """
-    cursor.executemany(insert_query, items)
-    conn.commit()
+        insert_query = """
+            INSERT INTO inventory (name, category, price, stock_quantity)
+            VALUES (%s, %s, %s, %s)
+        """
+        cursor.executemany(insert_query, items)
+        conn.commit()
 
-    print(f"Success! Inserted {len(items)} vegetarian items across {len(STORE_CATALOG)} departments.")
-    cursor.close()
-    conn.close()
+        print(f"Success! Inserted {len(items)} vegetarian items across {len(STORE_CATALOG)} departments.")
+    except Exception as e:
+        print(f"Error populating inventory: {e}")
+    finally:
+        if cursor:
+            cursor.close()
+        if conn and conn.is_connected():
+            conn.close()
 
 
 if __name__ == "__main__":

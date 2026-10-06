@@ -14,6 +14,7 @@ def check_store_status():
     if not conn:
         return False, "Database connection failed. Please check MySQL server."
 
+    cursor = None
     try:
         cursor = conn.cursor(dictionary=True)
 
@@ -58,8 +59,13 @@ def check_store_status():
         return False, f"Error checking business hours: {e}"
 
     finally:
-        cursor.close()
-        conn.close()
+        if cursor is not None:
+            try:
+                cursor.close()
+            except Exception:
+                pass
+        if conn and conn.is_connected():
+            conn.close()
 
 
 if __name__ == "__main__":

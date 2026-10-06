@@ -37,6 +37,11 @@ class InventoryFrame(ttk.Frame):
 
         ttk.Button(search_frame, text="Reset Filters", command=self.reset_filters).pack(side=tk.LEFT, padx=10)
 
+        # Status bar showing item count
+        self.status_var = tk.StringVar(value="Ready")
+        status_bar = ttk.Label(search_frame, textvariable=self.status_var, font=("Segoe UI", 8))
+        status_bar.pack(side=tk.RIGHT, padx=10)
+
         # 2. Main Inventory Table (Treeview)
         table_frame = ttk.Frame(self)
         table_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
@@ -100,11 +105,16 @@ class InventoryFrame(ttk.Frame):
         conn = get_db_connection()
         if not conn:
             return
-        cursor = conn.cursor()
-        cursor.execute("SELECT DISTINCT category FROM inventory ORDER BY category;")
-        categories = [row[0] for row in cursor.fetchall()]
-        cursor.close()
-        conn.close()
+        try:
+            cursor = conn.cursor()
+            cursor.execute("SELECT DISTINCT category FROM inventory ORDER BY category;")
+            categories = [row[0] for row in cursor.fetchall()]
+            cursor.close()
+        except Exception:
+            categories = []
+        finally:
+            if conn.is_connected():
+                conn.close()
 
         self.category_dropdown["values"] = ["All"] + categories
         self.category_dropdown.current(0)
@@ -117,31 +127,38 @@ class InventoryFrame(ttk.Frame):
         conn = get_db_connection()
         if not conn:
             return
-        cursor = conn.cursor()
 
-        search_query = self.search_var.get().strip()
-        category_filter = self.category_filter_var.get()
+        try:
+            cursor = conn.cursor()
 
-        sql = "SELECT item_id, name, category, price, stock_quantity FROM inventory WHERE 1=1"
-        params = []
+            search_query = self.search_var.get().strip()
+            category_filter = self.category_filter_var.get()
 
-        if search_query:
-            sql += " AND name LIKE %s"
-            params.append(f"%{search_query}%")
+            sql = "SELECT item_id, name, category, price, stock_quantity FROM inventory WHERE 1=1"
+            params = []
 
-        if category_filter and category_filter != "All":
-            sql += " AND category = %s"
-            params.append(category_filter)
+            if search_query:
+                sql += " AND name LIKE %s"
+                params.append(f"%{search_query}%")
 
-        sql += " ORDER BY item_id ASC"
-        cursor.execute(sql, params)
-        rows = cursor.fetchall()
+            if category_filter and category_filter != "All":
+                sql += " AND category = %s"
+                params.append(category_filter)
 
-        for item in rows:
-            self.tree.insert("", tk.END, values=(item[0], item[1], item[2], f"{item[3]:.2f}", item[4]))
+            sql += " ORDER BY item_id ASC"
+            cursor.execute(sql, params)
+            rows = cursor.fetchall()
 
-        cursor.close()
-        conn.close()
+            for item in rows:
+                self.tree.insert("", tk.END, values=(item[0], item[1], item[2], f"{item[3]:.2f}", item[4]))
+
+            self.status_var.set(f"Showing {len(rows)} products")
+            cursor.close()
+        except Exception as e:
+            self.status_var.set(f"Error: {e}")
+        finally:
+            if conn.is_connected():
+                conn.close()
 
     def on_item_select(self, event):
         selected = self.tree.selection()
@@ -176,14 +193,21 @@ class InventoryFrame(ttk.Frame):
         conn = get_db_connection()
         if not conn:
             return
-        cursor = conn.cursor()
-        cursor.execute(
-            "INSERT INTO inventory (name, category, price, stock_quantity) VALUES (%s, %s, %s, %s)",
-            (name, category, price_val, stock_val)
-        )
-        conn.commit()
-        cursor.close()
-        conn.close()
+
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                "INSERT INTO inventory (name, category, price, stock_quantity) VALUES (%s, %s, %s, %s)",
+                (name, category, price_val, stock_val)
+            )
+            conn.commit()
+            cursor.close()
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to add product: {e}")
+            return
+        finally:
+            if conn.is_connected():
+                conn.close()
 
         messagebox.showinfo("Success", f"Product '{name}' added successfully!")
         self.clear_form()
@@ -216,14 +240,21 @@ class InventoryFrame(ttk.Frame):
         conn = get_db_connection()
         if not conn:
             return
-        cursor = conn.cursor()
-        cursor.execute(
-            "UPDATE inventory SET name = %s, category = %s, price = %s, stock_quantity = %s WHERE item_id = %s",
-            (name, category, price_val, stock_val, self.selected_item_id)
-        )
-        conn.commit()
-        cursor.close()
-        conn.close()
+
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                "UPDATE inventory SET name = %s, category = %s, price = %s, stock_quantity = %s WHERE item_id = %s",
+                (name, category, price_val, stock_val, self.selected_item_id)
+            )
+            conn.commit()
+            cursor.close()
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to update product: {e}")
+            return
+        finally:
+            if conn.is_connected():
+                conn.close()
 
         messagebox.showinfo("Success", "Product details updated successfully!")
         self.clear_form()
@@ -234,18 +265,27 @@ class InventoryFrame(ttk.Frame):
             messagebox.showwarning("Selection Required", "Please select an item from the list to delete.")
             return
 
-        confirm = messagebox.askyesno("Confirm Delete", "Are you sure you want to remove this product permanently?")
+        confirm = messagebox.askyesno("Confirm Delete", "Are you sure you want to remove this product permanently?\n\nNote: Any past sale records referencing this item may be affected.")
         if not confirm:
             return
 
         conn = get_db_connection()
         if not conn:
             return
-        cursor = conn.cursor()
-        cursor.execute("DELETE FROM inventory WHERE item_id = %s", (self.selected_item_id,))
-        conn.commit()
-        cursor.close()
-        conn.close()
+
+        try:
+            cursor = conn.cursor()
+            # Delete associated sale_items first to avoid FK constraint violation
+            cursor.execute("DELETE FROM sale_items WHERE item_id = %s", (self.selected_item_id,))
+            cursor.execute("DELETE FROM inventory WHERE item_id = %s", (self.selected_item_id,))
+            conn.commit()
+            cursor.close()
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to delete product: {e}")
+            return
+        finally:
+            if conn.is_connected():
+                conn.close()
 
         messagebox.showinfo("Deleted", "Product removed from inventory.")
         self.clear_form()

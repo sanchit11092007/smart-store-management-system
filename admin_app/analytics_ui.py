@@ -2,6 +2,8 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 import pandas as pd
 import numpy as np
+import matplotlib
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from database.db_connection import get_db_connection
@@ -95,8 +97,8 @@ class AnalyticsFrame(ttk.Frame):
             total_units = int(df["stock_quantity"].sum())
             
             # Inventory Value = Price * Quantity
-            total_value = float(np.sum(df["price"] * df["stock_quantity"]))
-            avg_price = float(np.mean(df["price"]))
+            total_value = float(np.sum(df["price"].astype(float) * df["stock_quantity"].astype(float)))
+            avg_price = float(np.mean(df["price"].astype(float)))
 
             # Update KPI cards
             self.lbl_total_items.config(text=f"{total_items:,}")
@@ -110,12 +112,16 @@ class AnalyticsFrame(ttk.Frame):
         except Exception as e:
             messagebox.showerror("Error", f"Failed to load analytics: {e}")
         finally:
-            conn.close()
+            if conn.is_connected():
+                conn.close()
 
     def draw_charts(self, df):
         # Remove old chart if present
         if self.canvas:
-            self.canvas.get_tk_widget().destroy()
+            try:
+                self.canvas.get_tk_widget().destroy()
+            except Exception:
+                pass
 
         plt.close("all")
 
@@ -123,21 +129,26 @@ class AnalyticsFrame(ttk.Frame):
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 4.2), dpi=100)
         fig.patch.set_facecolor("#f8fafc")
 
+        # Ensure numeric types for groupby operations
+        df["price"] = df["price"].astype(float)
+        df["stock_quantity"] = df["stock_quantity"].astype(int)
+
         # Chart 1: Stock Quantity by Category
         category_stock = df.groupby("category")["stock_quantity"].sum().sort_values(ascending=False).head(8)
         bars1 = ax1.barh(category_stock.index, category_stock.values, color="#0284c7")
         ax1.set_title("Top 8 Departments by Stock Volume", fontsize=10, fontweight="bold", pad=8)
         ax1.set_xlabel("Units Available", fontsize=8)
         ax1.invert_yaxis()  # Largest on top
-        ax1.tick_params(axis="both", labelsize=8)
+        ax1.tick_params(axis="both", labelsize=7)
         ax1.grid(axis="x", linestyle="--", alpha=0.5)
 
         # Chart 2: Average Price by Category
         category_price = df.groupby("category")["price"].mean().sort_values(ascending=False).head(8)
-        bars2 = ax2.bar(category_price.index, category_price.values, color="#10b981")
+        ax2.bar(range(len(category_price)), category_price.values, color="#10b981")
         ax2.set_title("Top 8 Categories by Average Price (₹)", fontsize=10, fontweight="bold", pad=8)
         ax2.set_ylabel("Average Price (₹)", fontsize=8)
-        ax2.set_xticklabels(category_price.index, rotation=35, ha="right", fontsize=7)
+        ax2.set_xticks(range(len(category_price)))
+        ax2.set_xticklabels([name[:14] for name in category_price.index], rotation=35, ha="right", fontsize=7)
         ax2.tick_params(axis="y", labelsize=8)
         ax2.grid(axis="y", linestyle="--", alpha=0.5)
 

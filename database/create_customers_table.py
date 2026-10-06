@@ -7,6 +7,7 @@ def create_customer_table():
         print("Cannot connect to MySQL database.")
         return
 
+    cursor = None
     try:
         cursor = conn.cursor()
 
@@ -43,12 +44,15 @@ def create_customer_table():
             print("Added 'customer_id' column to 'sales' table.")
 
         conn.commit()
-        cursor.close()
-        conn.close()
         print("Database update completed successfully!")
 
     except Exception as e:
         print(f"Error updating database: {e}")
+    finally:
+        if cursor:
+            cursor.close()
+        if conn and conn.is_connected():
+            conn.close()
 
 
 if __name__ == "__main__":

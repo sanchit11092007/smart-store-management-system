@@ -5,29 +5,43 @@ from PIL import Image, ImageDraw, ImageFont, ImageTk
 ASSETS_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "assets", "products")
 os.makedirs(ASSETS_DIR, exist_ok=True)
 
-# Color themes for categories
+# Color themes for categories — matched to actual inventory categories
 CATEGORY_COLORS = {
     "Grocery & Staples": "#fef3c7",
-    "Fruits & Vegetables": "#dcfce7",
-    "Dairy & Eggs": "#e0f2fe",
-    "Beverages": "#ffedd5",
-    "Snacks & Munchies": "#fee2e2",
+    "Dairy, Bakery, Fruits & Vegetables": "#dcfce7",
+    "Beverages, Snacks & Confectionery": "#ffedd5",
     "Personal Care": "#f3e8ff",
+    "Girls Accessories & Makeup": "#fce7f3",
+    "Tech Based Items": "#e0f2fe",
+    "Health & Wellness": "#d1fae5",
+    "All Medicines & First Aid": "#fee2e2",
     "Household Essentials": "#e2e8f0",
-    "Bakery & Sweets": "#fce7f3",
-    "Instant Food": "#fef9c3",
+    "Home & Kitchen": "#f0f9ff",
+    "Stationery & Office Supplies": "#fef9c3",
+    "Electronics & Accessories": "#dbeafe",
+    "Clothing & Fashion": "#fce4ec",
+    "Seasonal & Festival Items": "#fff3e0",
+    "Ready to Eat": "#fff8e1",
+    "Sports & Fitness": "#e8f5e9",
 }
 
 CATEGORY_ICONS = {
     "Grocery & Staples": "🌾",
-    "Fruits & Vegetables": "🍎",
-    "Dairy & Eggs": "🥛",
-    "Beverages": "🥤",
-    "Snacks & Munchies": "🍿",
+    "Dairy, Bakery, Fruits & Vegetables": "🥛",
+    "Beverages, Snacks & Confectionery": "🥤",
     "Personal Care": "🧼",
+    "Girls Accessories & Makeup": "💄",
+    "Tech Based Items": "🔌",
+    "Health & Wellness": "💊",
+    "All Medicines & First Aid": "🩹",
     "Household Essentials": "🧹",
-    "Bakery & Sweets": "🍞",
-    "Instant Food": "🍜",
+    "Home & Kitchen": "🍳",
+    "Stationery & Office Supplies": "✏️",
+    "Electronics & Accessories": "🎧",
+    "Clothing & Fashion": "👕",
+    "Seasonal & Festival Items": "🎉",
+    "Ready to Eat": "🍜",
+    "Sports & Fitness": "⚽",
 }
 
 
@@ -61,8 +75,11 @@ def get_product_image(item_id, item_name, category, size=(160, 110)):
     # Short product text
     short_title = item_name[:16] + ".." if len(item_name) > 16 else item_name
 
-    # Draw simple text
-    draw.text((size[0] // 2, 38), icon, fill="#0f172a", anchor="mm", font=None)
+    # Draw simple text (use default font — PIL may not render emoji on all systems)
+    try:
+        draw.text((size[0] // 2, 38), icon, fill="#0f172a", anchor="mm", font=None)
+    except Exception:
+        draw.text((size[0] // 2, 38), "●", fill="#0f172a", anchor="mm", font=None)
     draw.text((size[0] // 2, 75), short_title, fill="#334155", anchor="mm", font=None)
 
     return ImageTk.PhotoImage(img)

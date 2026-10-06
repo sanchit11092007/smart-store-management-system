@@ -7,6 +7,7 @@ def remove_dummy_sales():
         print("Database connection failed.")
         return
 
+    cursor = None
     try:
         cursor = conn.cursor()
         # Delete dummy sales records
@@ -19,8 +20,13 @@ def remove_dummy_sales():
     except Exception as e:
         print(f"Error during cleanup: {e}")
     finally:
-        cursor.close()
-        conn.close()
+        if cursor is not None:
+            try:
+                cursor.close()
+            except Exception:
+                pass
+        if conn and conn.is_connected():
+            conn.close()
 
 
 if __name__ == "__main__":

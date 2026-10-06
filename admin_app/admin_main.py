@@ -1,46 +1,21 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
 from datetime import datetime, timedelta
+import matplotlib
+matplotlib.use("Agg")  # Must be set before importing pyplot to avoid backend conflicts
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
-from database.db_connection import get_db_connection
+from database.db_connection import get_db_connection, ensure_core_schema
 from common.store_status import check_store_status
-
-
-def ensure_backend_schema():
-    """
-    Checks that the sales table has all required columns.
-    Does not insert any dummy or sample data.
-    """
-    conn = get_db_connection()
-    if not conn:
-        return
-
-    try:
-        cursor = conn.cursor(dictionary=True)
-        cursor.execute("""
-            SELECT COUNT(*) AS col_exists 
-            FROM information_schema.COLUMNS 
-            WHERE TABLE_SCHEMA = 'smart_store_db' 
-              AND TABLE_NAME = 'sales' 
-              AND COLUMN_NAME = 'payment_method';
-        """)
-        if cursor.fetchone()["col_exists"] == 0:
-            cursor.execute("ALTER TABLE sales ADD COLUMN payment_method VARCHAR(20) DEFAULT 'Cash';")
-            conn.commit()
-
-        cursor.close()
-        conn.close()
-    except Exception as e:
-        print(f"Database schema check notice: {e}")
 
 
 class SnapKartModernDashboard(tk.Tk):
     def __init__(self):
         super().__init__()
 
-        ensure_backend_schema()
+        # Ensure database has all required columns/tables
+        ensure_core_schema()
 
         self.title("SnapKart - Business Smarter, Every Day")
         self.geometry("1440x900")
@@ -59,6 +34,7 @@ class SnapKartModernDashboard(tk.Tk):
         self.COLOR_TEXT_MUTED = "#64748b"
 
         self.chart_canvas = None
+        self._active_canvas = None
 
         # Build UI layout
         self.create_sidebar()
@@ -166,23 +142,39 @@ class SnapKartModernDashboard(tk.Tk):
 
         self.create_top_header(container)
 
-        canvas = tk.Canvas(container, bg=self.COLOR_BG, bd=0, highlightthickness=0)
-        scrollbar = ttk.Scrollbar(container, orient="vertical", command=canvas.yview)
+        self.main_canvas = tk.Canvas(container, bg=self.COLOR_BG, bd=0, highlightthickness=0)
+        scrollbar = ttk.Scrollbar(container, orient="vertical", command=self.main_canvas.yview)
 
-        self.scroll_body = tk.Frame(canvas, bg=self.COLOR_BG)
-        self.scroll_body.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+        self.scroll_body = tk.Frame(self.main_canvas, bg=self.COLOR_BG)
+        self.scroll_body.bind("<Configure>", lambda e: self.main_canvas.configure(scrollregion=self.main_canvas.bbox("all")))
 
-        canvas.create_window((0, 0), window=self.scroll_body, anchor="nw")
-        canvas.configure(yscrollcommand=scrollbar.set)
+        self.main_canvas.create_window((0, 0), window=self.scroll_body, anchor="nw")
+        self.main_canvas.configure(yscrollcommand=scrollbar.set)
 
-        canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        self.main_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+        # Mousewheel support
+        self.main_canvas.bind("<Enter>", lambda e: self._bind_mousewheel(self.main_canvas))
+        self.main_canvas.bind("<Leave>", lambda e: self._unbind_mousewheel())
 
         self.create_welcome_banner(self.scroll_body)
         self.create_kpi_cards(self.scroll_body)
         self.create_middle_section(self.scroll_body)
         self.create_bottom_section(self.scroll_body)
         self.create_footer(self.scroll_body)
+
+    def _bind_mousewheel(self, canvas):
+        self._active_canvas = canvas
+        self.bind_all("<MouseWheel>", self._on_mousewheel)
+
+    def _unbind_mousewheel(self):
+        self.unbind_all("<MouseWheel>")
+        self._active_canvas = None
+
+    def _on_mousewheel(self, event):
+        if self._active_canvas:
+            self._active_canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
 
     def create_top_header(self, parent):
         top_bar = tk.Frame(parent, bg="#ffffff", height=65, bd=1, relief=tk.SOLID)
@@ -198,21 +190,21 @@ class SnapKartModernDashboard(tk.Tk):
         search_box.insert(0, "Search products, customers, or invoices... (Ctrl + K)")
         search_box.pack(side=tk.LEFT, ipady=4, padx=(0, 10))
 
-        # Admin profile on right[cite: 2]
+        # Admin profile on right
         profile_box = tk.Frame(top_bar, bg="#ffffff")
         profile_box.pack(side=tk.RIGHT, padx=25)
 
-        # Notification bell with red badge[cite: 2]
+        # Notification bell with red badge
         bell_frame = tk.Frame(profile_box, bg="#ffffff")
         bell_frame.pack(side=tk.LEFT, padx=(0, 18))
         tk.Label(bell_frame, text="🔔", font=("Segoe UI", 12), bg="#ffffff").pack(side=tk.LEFT)
         tk.Label(bell_frame, text="3", font=("Segoe UI", 7, "bold"), bg=self.COLOR_DANGER, fg="#ffffff", padx=4, pady=1).pack(side=tk.LEFT, anchor="n")
 
-        # Avatar circle[cite: 2]
+        # Avatar circle
         lbl_avatar = tk.Label(profile_box, text="S", font=("Segoe UI", 11, "bold"), bg=self.COLOR_PRIMARY, fg="#ffffff", width=3, height=1)
         lbl_avatar.pack(side=tk.LEFT, padx=(0, 8))
 
-        # Profile labels[cite: 2]
+        # Profile labels
         info = tk.Frame(profile_box, bg="#ffffff")
         info.pack(side=tk.LEFT)
         tk.Label(info, text="Sanchit Goyal", font=("Segoe UI", 9, "bold"), fg=self.COLOR_TEXT_DARK, bg="#ffffff").pack(anchor="w")
@@ -399,6 +391,7 @@ class SnapKartModernDashboard(tk.Tk):
             messagebox.showerror("Error", "Could not connect to MySQL server.")
             return
 
+        cursor = None
         try:
             cursor = conn.cursor(dictionary=True)
 
@@ -424,7 +417,8 @@ class SnapKartModernDashboard(tk.Tk):
                 now = datetime.now()
                 c_str = str(c_time)
                 try:
-                    c_h, c_m, _ = map(int, c_str.split(":"))
+                    parts = c_str.split(":")
+                    c_h, c_m = int(parts[0]), int(parts[1])
                     closing_datetime = now.replace(hour=c_h, minute=c_m, second=0)
                     if is_open and closing_datetime > now:
                         diff = closing_datetime - now
@@ -460,7 +454,7 @@ class SnapKartModernDashboard(tk.Tk):
 
             # 3. Recent Transactions
             cursor.execute("""
-                SELECT sale_id, DATE_FORMAT(sale_datetime, '%Y-%m-%d %h:%i %p') AS s_time, 
+                SELECT sale_id, DATE_FORMAT(sale_datetime, '%%Y-%%m-%%d %%h:%%i %%p') AS s_time, 
                        total_amount, payment_method 
                 FROM sales 
                 ORDER BY sale_datetime DESC 
@@ -476,7 +470,7 @@ class SnapKartModernDashboard(tk.Tk):
                     f"#{s['sale_id']}",
                     s["s_time"],
                     f"₹{float(s['total_amount']):.2f}",
-                    s["payment_method"] or "Cash",
+                    s.get("payment_method") or "Cash",
                     "Completed"
                 ))
 
@@ -502,8 +496,13 @@ class SnapKartModernDashboard(tk.Tk):
         except Exception as e:
             print(f"Error loading dashboard data: {e}")
         finally:
-            cursor.close()
-            conn.close()
+            if cursor is not None:
+                try:
+                    cursor.close()
+                except Exception:
+                    pass
+            if conn and conn.is_connected():
+                conn.close()
 
     def render_charts_from_backend(self, cursor):
         """
@@ -552,7 +551,10 @@ class SnapKartModernDashboard(tk.Tk):
 
         # Matplotlib Rendering
         if self.chart_canvas:
-            self.chart_canvas.get_tk_widget().destroy()
+            try:
+                self.chart_canvas.get_tk_widget().destroy()
+            except Exception:
+                pass
 
         plt.close("all")
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(7.6, 2.9), dpi=100)
@@ -568,16 +570,21 @@ class SnapKartModernDashboard(tk.Tk):
         ax1.spines["right"].set_visible(False)
 
         # Donut chart
-        colors = ["#2563eb", "#06b6d4", "#f59e0b", "#ef4444", "#a855f7", "#64748b"]
+        chart_colors = ["#2563eb", "#06b6d4", "#f59e0b", "#ef4444", "#a855f7", "#64748b"]
         ax2.pie(
             cat_values,
             labels=None,
-            colors=colors[:len(cat_values)],
+            colors=chart_colors[:len(cat_values)],
             startangle=90,
             wedgeprops=dict(width=0.42, edgecolor="w", linewidth=1.5)
         )
         ax2.set_title("Category Wise Sales", fontsize=9, fontweight="bold", pad=8, color="#0f172a")
         ax2.text(0, 0, donut_center_text, ha="center", va="center", fontsize=8, fontweight="bold", color="#0f172a")
+
+        # Add legend for donut chart
+        if cat_labels[0] != "No Sales Yet":
+            ax2.legend(cat_labels, loc="lower center", fontsize=6, ncol=2, frameon=False,
+                       bbox_to_anchor=(0.5, -0.15))
 
         fig.tight_layout()
 
@@ -592,21 +599,30 @@ class SnapKartModernDashboard(tk.Tk):
             messagebox.showerror("Error", "Could not connect to database.")
             return
 
-        cursor = conn.cursor(dictionary=True)
-        cursor.execute("SELECT is_closed_today FROM store_hours WHERE day_name = %s", (today,))
-        row = cursor.fetchone()
+        cursor = None
+        try:
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute("SELECT is_closed_today FROM store_hours WHERE day_name = %s", (today,))
+            row = cursor.fetchone()
 
-        if row:
-            new_status = not bool(row["is_closed_today"])
-            cursor.execute("UPDATE store_hours SET is_closed_today = %s WHERE day_name = %s", (new_status, today))
-            conn.commit()
+            if row:
+                new_status = not bool(row["is_closed_today"])
+                cursor.execute("UPDATE store_hours SET is_closed_today = %s WHERE day_name = %s", (new_status, today))
+                conn.commit()
 
-            status_str = "CLOSED" if new_status else "OPEN"
-            messagebox.showinfo("Store Updated", f"Store status for {today} updated to {status_str} in MySQL.")
-            self.load_all_backend_data()
-
-        cursor.close()
-        conn.close()
+                status_str = "CLOSED" if new_status else "OPEN"
+                messagebox.showinfo("Store Updated", f"Store status for {today} updated to {status_str} in MySQL.")
+                self.load_all_backend_data()
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to toggle store status: {e}")
+        finally:
+            if cursor is not None:
+                try:
+                    cursor.close()
+                except Exception:
+                    pass
+            if conn and conn.is_connected():
+                conn.close()
 
 
 if __name__ == "__main__":

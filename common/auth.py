@@ -18,10 +18,20 @@ def register_customer(full_name: str, email: str, phone: str, password: str):
     if len(password) < 6:
         return False, "Password must be at least 6 characters long."
 
+    # Basic email validation
+    if "@" not in email or "." not in email.split("@")[-1]:
+        return False, "Please enter a valid email address."
+
+    # Basic phone validation
+    phone_digits = ''.join(c for c in phone if c.isdigit())
+    if len(phone_digits) < 10:
+        return False, "Phone number must have at least 10 digits."
+
     conn = get_db_connection()
     if not conn:
         return False, "Database connection failed."
 
+    cursor = None
     try:
         cursor = conn.cursor(dictionary=True)
 
@@ -43,8 +53,13 @@ def register_customer(full_name: str, email: str, phone: str, password: str):
     except Exception as e:
         return False, f"Registration failed: {e}"
     finally:
-        cursor.close()
-        conn.close()
+        if cursor is not None:
+            try:
+                cursor.close()
+            except Exception:
+                pass
+        if conn and conn.is_connected():
+            conn.close()
 
 
 def login_customer(email: str, password: str):
@@ -59,6 +74,7 @@ def login_customer(email: str, password: str):
     if not conn:
         return False, None, "Database connection failed."
 
+    cursor = None
     try:
         cursor = conn.cursor(dictionary=True)
         cursor.execute("""
@@ -83,5 +99,10 @@ def login_customer(email: str, password: str):
     except Exception as e:
         return False, None, f"Login failed: {e}"
     finally:
-        cursor.close()
-        conn.close()
+        if cursor is not None:
+            try:
+                cursor.close()
+            except Exception:
+                pass
+        if conn and conn.is_connected():
+            conn.close()
