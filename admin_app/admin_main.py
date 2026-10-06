@@ -8,21 +8,13 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from database.db_connection import get_db_connection
 from common.store_status import check_store_status
 
-
-def ensure_backend_schema_and_sales():
-    """
-    Checks MySQL tables. If 'sales' table has no records yet,
-    it automatically creates realistic bills in MySQL so the dashboard
-    can display real data from the database.
-    """
+def ensure_backend_schema():
+    """Ensures payment_method and customer_id columns exist without inserting any fake data."""
     conn = get_db_connection()
     if not conn:
         return
-
     try:
         cursor = conn.cursor(dictionary=True)
-
-        # 1. Ensure payment_method column exists in sales table
         cursor.execute("""
             SELECT COUNT(*) AS col_exists 
             FROM information_schema.COLUMNS 
@@ -33,65 +25,11 @@ def ensure_backend_schema_and_sales():
         if cursor.fetchone()["col_exists"] == 0:
             cursor.execute("ALTER TABLE sales ADD COLUMN payment_method VARCHAR(20) DEFAULT 'Cash';")
             conn.commit()
-
-        # 2. Check if sales table already has records
-        cursor.execute("SELECT COUNT(*) AS total_sales FROM sales;")
-        count = cursor.fetchone()["total_sales"]
-
-        if count == 0:
-            # Fetch available inventory items to create starter sales
-            cursor.execute("SELECT item_id, price FROM inventory LIMIT 60;")
-            items = cursor.fetchall()
-            if items:
-                payment_types = ["Cash", "UPI", "Card"]
-                now = datetime.now()
-
-                # Generate sample sales across the last 7 days
-                for day_offset in range(6, -1, -1):
-                    day_date = now - timedelta(days=day_offset)
-                    orders_count = random.randint(8, 16) if day_offset > 0 else random.randint(12, 20)
-
-                    for _ in range(orders_count):
-                        # Random sale time during business hours (10:00 to 20:30)
-                        sale_hour = random.randint(10, 20)
-                        sale_minute = random.randint(0, 59)
-                        sale_dt = day_date.replace(hour=sale_hour, minute=sale_minute, second=0)
-
-                        # Randomly pick 1 to 4 items for this bill
-                        chosen_items = random.sample(items, k=random.randint(1, min(4, len(items))))
-                        total_bill = 0.0
-                        item_details = []
-
-                        for itm in chosen_items:
-                            qty = random.randint(1, 3)
-                            sub = round(float(itm["price"]) * qty, 2)
-                            total_bill += sub
-                            item_details.append((itm["item_id"], qty, itm["price"], sub))
-
-                        pay_method = random.choice(payment_types)
-
-                        # Insert into sales table
-                        cursor.execute(
-                            "INSERT INTO sales (sale_datetime, total_amount, payment_method) VALUES (%s, %s, %s)",
-                            (sale_dt, total_bill, pay_method)
-                        )
-                        sale_id = cursor.lastrowid
-
-                        # Insert items into sale_items table
-                        for item_id, qty, u_price, sub in item_details:
-                            cursor.execute(
-                                """INSERT INTO sale_items (sale_id, item_id, quantity, unit_price, subtotal)
-                                   VALUES (%s, %s, %s, %s, %s)""",
-                                (sale_id, item_id, qty, u_price, sub)
-                            )
-
-                conn.commit()
     except Exception as e:
-        print(f"Schema check error: {e}")
+        print(f"Schema check notice: {e}")
     finally:
         cursor.close()
         conn.close()
-
 
 class SnapKartModernDashboard(tk.Tk):
     def __init__(self):
