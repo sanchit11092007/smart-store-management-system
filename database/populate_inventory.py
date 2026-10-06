@@ -1,11 +1,10 @@
 import random
-import re
 from database.db_connection import get_db_connection
 
 random.seed(42)  # Deterministic seed for reproducible product catalog
 
 # ---------------------------------------------------------------
-# PACK SIZES: Expanded size variants to reach 10,000+ items
+# PACK SIZES
 # ---------------------------------------------------------------
 SIZES = {
     "kg":     [("100g", 0.15), ("250g", 0.3), ("500g", 0.55), ("1kg", 1.0), ("2kg", 1.9), ("3kg", 2.8), ("5kg", 4.6), ("10kg", 9.0)],
@@ -71,36 +70,36 @@ STORE_CATALOG = {
         ("Pure Milk Khoya Mawa", ["Amul", "Mother Dairy", "Ananda", "Gowardhan", "Parag"], 120, 220, "g"),
     ],
     "Fresh Vegetables & Greens": [
-        ("Fresh Agra Potato Aloo", ["Fresho", "Farm Fresh", "Agra Mandi", "Nature Basket", "Safal"], 22, 38, "kg"),
-        ("Red Onion Pyaz", ["Fresho", "Farm Fresh", "Agra Mandi", "Nature Basket", "Safal"], 25, 48, "kg"),
-        ("Ripe Red Tomato Tamatar", ["Fresho", "Farm Fresh", "Agra Mandi", "Nature Basket", "Safal"], 28, 55, "kg"),
-        ("Fresh Cauliflower Gobi", ["Fresho", "Farm Fresh", "Agra Mandi", "Nature Basket", "Safal"], 32, 62, "kg"),
-        ("Sweet Green Peas Matar", ["Fresho", "Farm Fresh", "Agra Mandi", "Nature Basket", "Safal"], 65, 125, "kg"),
-        ("Green Capsicum Shimla Mirch", ["Fresho", "Farm Fresh", "Agra Mandi", "Nature Basket", "Safal"], 48, 88, "kg"),
-        ("Organic Spinach Palak Bunch", ["Fresho", "Farm Fresh", "Agra Mandi", "Nature Basket", "Safal"], 22, 48, "kg"),
-        ("Crunchy Red Carrot Gajar", ["Fresho", "Farm Fresh", "Agra Mandi", "Nature Basket", "Safal"], 36, 62, "kg"),
-        ("Fresh Garlic Lehsun", ["Fresho", "Farm Fresh", "Agra Mandi", "Nature Basket", "Safal"], 120, 240, "kg"),
-        ("Fresh Ginger Adrak", ["Fresho", "Farm Fresh", "Agra Mandi", "Nature Basket", "Safal"], 80, 160, "kg"),
-        ("Green Coriander Dhaniya Bunch", ["Fresho", "Farm Fresh", "Agra Mandi", "Nature Basket", "Safal"], 15, 35, "g"),
-        ("Round Brinjal Baingan", ["Fresho", "Farm Fresh", "Agra Mandi", "Nature Basket", "Safal"], 30, 58, "kg"),
-        ("Fresh Bottle Gourd Lauki", ["Fresho", "Farm Fresh", "Agra Mandi", "Nature Basket", "Safal"], 25, 50, "kg"),
-        ("Tender Lady Finger Bhindi", ["Fresho", "Farm Fresh", "Agra Mandi", "Nature Basket", "Safal"], 35, 75, "kg"),
-        ("White Button Mushroom Pack", ["Fresho", "Farm Fresh", "Agra Mandi", "Nature Basket", "Safal"], 45, 80, "pack"),
-        ("Salad Cucumber Kheera", ["Fresho", "Farm Fresh", "Agra Mandi", "Nature Basket", "Safal"], 30, 55, "kg"),
+        ("Fresh Potato Aloo", ["Fresho", "Farm Fresh", "Local Mandi", "Nature Basket", "Safal"], 22, 38, "kg"),
+        ("Red Onion Pyaz", ["Fresho", "Farm Fresh", "Local Mandi", "Nature Basket", "Safal"], 25, 48, "kg"),
+        ("Ripe Red Tomato Tamatar", ["Fresho", "Farm Fresh", "Local Mandi", "Nature Basket", "Safal"], 28, 55, "kg"),
+        ("Fresh Cauliflower Gobi", ["Fresho", "Farm Fresh", "Local Mandi", "Nature Basket", "Safal"], 32, 62, "kg"),
+        ("Sweet Green Peas Matar", ["Fresho", "Farm Fresh", "Local Mandi", "Nature Basket", "Safal"], 65, 125, "kg"),
+        ("Green Capsicum Shimla Mirch", ["Fresho", "Farm Fresh", "Local Mandi", "Nature Basket", "Safal"], 48, 88, "kg"),
+        ("Organic Spinach Palak Bunch", ["Fresho", "Farm Fresh", "Local Mandi", "Nature Basket", "Safal"], 22, 48, "kg"),
+        ("Crunchy Red Carrot Gajar", ["Fresho", "Farm Fresh", "Local Mandi", "Nature Basket", "Safal"], 36, 62, "kg"),
+        ("Fresh Garlic Lehsun", ["Fresho", "Farm Fresh", "Local Mandi", "Nature Basket", "Safal"], 120, 240, "kg"),
+        ("Fresh Ginger Adrak", ["Fresho", "Farm Fresh", "Local Mandi", "Nature Basket", "Safal"], 80, 160, "kg"),
+        ("Green Coriander Dhaniya Bunch", ["Fresho", "Farm Fresh", "Local Mandi", "Nature Basket", "Safal"], 15, 35, "g"),
+        ("Round Brinjal Baingan", ["Fresho", "Farm Fresh", "Local Mandi", "Nature Basket", "Safal"], 30, 58, "kg"),
+        ("Fresh Bottle Gourd Lauki", ["Fresho", "Farm Fresh", "Local Mandi", "Nature Basket", "Safal"], 25, 50, "kg"),
+        ("Tender Lady Finger Bhindi", ["Fresho", "Farm Fresh", "Local Mandi", "Nature Basket", "Safal"], 35, 75, "kg"),
+        ("White Button Mushroom Pack", ["Fresho", "Farm Fresh", "Local Mandi", "Nature Basket", "Safal"], 45, 80, "pack"),
+        ("Salad Cucumber Kheera", ["Fresho", "Farm Fresh", "Local Mandi", "Nature Basket", "Safal"], 30, 55, "kg"),
     ],
     "Fresh Fruits & Berries": [
-        ("Royal Gala Red Apple", ["Fresho", "Farm Fresh", "Agra Mandi", "Nature Basket", "Safal"], 125, 230, "kg"),
-        ("Robusta Yellow Banana", ["Fresho", "Farm Fresh", "Agra Mandi", "Nature Basket", "Safal"], 42, 68, "kg"),
-        ("Nagpur Sweet Orange Santra", ["Fresho", "Farm Fresh", "Agra Mandi", "Nature Basket", "Safal"], 65, 105, "kg"),
-        ("Seedless Black Grapes", ["Fresho", "Farm Fresh", "Agra Mandi", "Nature Basket", "Safal"], 75, 135, "kg"),
-        ("Red Ruby Pomegranate Anar", ["Fresho", "Farm Fresh", "Agra Mandi", "Nature Basket", "Safal"], 125, 210, "kg"),
-        ("Ripe Sweet Papaya", ["Fresho", "Farm Fresh", "Agra Mandi", "Nature Basket", "Safal"], 32, 58, "kg"),
-        ("Juicy Red Watermelon Tarbooz", ["Fresho", "Farm Fresh", "Agra Mandi", "Nature Basket", "Safal"], 22, 42, "kg"),
-        ("Fresh Green Guava Amrood", ["Fresho", "Farm Fresh", "Agra Mandi", "Nature Basket", "Safal"], 45, 85, "kg"),
-        ("Imported Green Kiwi Pack", ["Fresho", "Farm Fresh", "Agra Mandi", "Nature Basket", "Zespri"], 95, 160, "pack"),
-        ("Fresh Dragon Fruit", ["Fresho", "Farm Fresh", "Agra Mandi", "Nature Basket", "Safal"], 80, 140, "pack"),
-        ("Sweet Sapota Chikoo", ["Fresho", "Farm Fresh", "Agra Mandi", "Nature Basket", "Safal"], 50, 90, "kg"),
-        ("Muskmelon Kharbooza", ["Fresho", "Farm Fresh", "Agra Mandi", "Nature Basket", "Safal"], 35, 65, "kg"),
+        ("Royal Gala Red Apple", ["Fresho", "Farm Fresh", "Local Mandi", "Nature Basket", "Safal"], 125, 230, "kg"),
+        ("Robusta Yellow Banana", ["Fresho", "Farm Fresh", "Local Mandi", "Nature Basket", "Safal"], 42, 68, "kg"),
+        ("Nagpur Sweet Orange Santra", ["Fresho", "Farm Fresh", "Local Mandi", "Nature Basket", "Safal"], 65, 105, "kg"),
+        ("Seedless Black Grapes", ["Fresho", "Farm Fresh", "Local Mandi", "Nature Basket", "Safal"], 75, 135, "kg"),
+        ("Red Ruby Pomegranate Anar", ["Fresho", "Farm Fresh", "Local Mandi", "Nature Basket", "Safal"], 125, 210, "kg"),
+        ("Ripe Sweet Papaya", ["Fresho", "Farm Fresh", "Local Mandi", "Nature Basket", "Safal"], 32, 58, "kg"),
+        ("Juicy Red Watermelon Tarbooz", ["Fresho", "Farm Fresh", "Local Mandi", "Nature Basket", "Safal"], 22, 42, "kg"),
+        ("Fresh Green Guava Amrood", ["Fresho", "Farm Fresh", "Local Mandi", "Nature Basket", "Safal"], 45, 85, "kg"),
+        ("Imported Green Kiwi Pack", ["Fresho", "Farm Fresh", "Local Mandi", "Nature Basket", "Zespri"], 95, 160, "pack"),
+        ("Fresh Dragon Fruit", ["Fresho", "Farm Fresh", "Local Mandi", "Nature Basket", "Safal"], 80, 140, "pack"),
+        ("Sweet Sapota Chikoo", ["Fresho", "Farm Fresh", "Local Mandi", "Nature Basket", "Safal"], 50, 90, "kg"),
+        ("Muskmelon Kharbooza", ["Fresho", "Farm Fresh", "Local Mandi", "Nature Basket", "Safal"], 35, 65, "kg"),
     ],
     "Bakery & Breakfast": [
         ("Fresh White Sandwich Bread", ["Britannia", "English Oven", "Modern", "Harvest Gold", "Bonn", "Perfect"], 40, 52, "g"),
@@ -199,8 +198,8 @@ STORE_CATALOG = {
     "Health, Wellness & Supplements": [
         ("Special Chyawanprash", ["Dabur", "Baidyanath", "Patanjali", "Zandu", "Hamdard"], 350, 495, "g"),
         ("100 Percent Pure Organic Honey", ["Dabur", "Patanjali", "Kapiva", "Zandu", "Saffola", "Baidyanath"], 220, 335, "g"),
-        ("Plant Protein Powder Veg", ["Kapiva", "Boldfit", "OZiva", "Yogabar", "Fast&Up"], 1550, 2700, "var"),
-        ("Vegetarian Multivitamin Tabs", ["HealthKart", "Kapiva", "Himalaya", "Boldfit", "Revital H"], 470, 780, "tabs"),
+        ("Plant Protein Powder", ["Kapiva", "Boldfit", "OZiva", "Yogabar", "Fast&Up"], 1550, 2700, "var"),
+        ("Multivitamin Tabs", ["HealthKart", "Kapiva", "Himalaya", "Boldfit", "Revital H"], 470, 780, "tabs"),
         ("Flaxseed Omega-3 Capsules", ["HealthKart", "Kapiva", "Himalaya", "Boldfit", "TrueBasics"], 520, 920, "tabs"),
         ("Pure Aloe Vera Juice", ["Patanjali", "Kapiva", "Dabur", "Himalaya", "Baidyanath"], 190, 280, "l"),
         ("Pure Amla Juice", ["Patanjali", "Kapiva", "Dabur", "Baidyanath", "Sri Sri"], 160, 270, "l"),
@@ -319,11 +318,6 @@ STORE_CATALOG = {
     ],
 }
 
-NON_VEG_WORDS = [
-    "egg", "chicken", "mutton", "fish", "prawn", "meat", "beef", "pork",
-    "lamb", "keema", "gelatin", "bacon", "ham", "salami", "crab", "tuna", "nonveg"
-]
-
 
 def build_all_items():
     all_items = []
@@ -338,11 +332,6 @@ def build_all_items():
                         continue
                     seen.add(name)
 
-                    low = name.lower()
-                    for bad in NON_VEG_WORDS:
-                        if re.search(rf"\b{bad}s?\b", low):
-                            raise ValueError(f"Non-veg word '{bad}' detected in product: {name}")
-
                     price = round(random.uniform(p_min, p_max) * mult, 2)
                     stock = random.randint(15, 150)
                     all_items.append((name, category, price, stock))
@@ -352,10 +341,9 @@ def build_all_items():
 
 def generate_items(target_count=10000):
     all_items = build_all_items()
-    print(f"Total generated unique vegetarian products: {len(all_items)}")
+    print(f"Total generated unique products: {len(all_items)}")
 
     if target_count > len(all_items):
-        print(f"Using max unique items: {len(all_items)}")
         chosen = all_items
     else:
         chosen = random.sample(all_items, target_count)
@@ -389,7 +377,7 @@ def insert_bulk_inventory(target_count=10000):
         cursor.executemany(insert_query, items)
         conn.commit()
 
-        print(f"Successfully inserted {len(items)} 100% vegetarian products into MySQL 'inventory' table!")
+        print(f"Successfully inserted {len(items)} products into MySQL 'inventory' table!")
     except Exception as e:
         print(f"Error populating inventory: {e}")
     finally:

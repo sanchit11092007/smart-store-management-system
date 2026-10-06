@@ -14,10 +14,8 @@ from reportlab.platypus import (
     HRFlowable
 )
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.graphics.shapes import Drawing, Rect, String
+from reportlab.graphics.shapes import Drawing
 from reportlab.graphics.barcode import qr
-
-from database.db_connection import get_db_connection
 
 
 def generate_pdf_receipt(
@@ -27,12 +25,12 @@ def generate_pdf_receipt(
     delivery_fee,
     total_amount,
     customer_name="Guest Customer",
-    customer_address="Sanjay Place, Agra - 282002",
+    customer_address="Main Street",
     payment_method="UPI",
     output_dir="receipts"
 ):
     """
-    Generates a world-class, authentic Retail GST Supermarket Tax Invoice PDF.
+    Generates an authentic Retail GST Supermarket Tax Invoice PDF for SnapKart.
     Saves it in the 'receipts' folder and returns the file path.
     """
     os.makedirs(output_dir, exist_ok=True)
@@ -94,15 +92,14 @@ def generate_pdf_receipt(
         [
             Paragraph("<b>SnapKart Retail Pvt. Ltd.</b>", brand_title_style),
             Paragraph(
-                "<b>SnapKart Agra Flagship Superstore</b><br/>"
-                "Plot No. 45, Commercial Complex, Sanjay Place<br/>"
-                "Agra, Uttar Pradesh - 282002<br/>"
+                "<b>SnapKart Flagship Superstore</b><br/>"
+                "Plot No. 45, Commercial Complex<br/>"
                 "<b>GSTIN:</b> 09AAACS1429B1Z8 | <b>FSSAI:</b> 12722001000456",
                 store_addr_style
             )
         ],
         [
-            Paragraph("Your Neighbourhood Store, Online • <i>100% Vegetarian Retail</i>", brand_sub_style),
+            Paragraph("Your Neighbourhood Store, Online", brand_sub_style),
             ""
         ]
     ]
@@ -141,7 +138,7 @@ def generate_pdf_receipt(
         ],
         [
             Paragraph(f"<b>Delivery Address:</b> {customer_address}", styles["Normal"]),
-            Paragraph("<b>POS Terminal:</b> Agra-POS-01", styles["Normal"])
+            Paragraph("<b>POS Terminal:</b> POS-Terminal-01", styles["Normal"])
         ]
     ]
 
@@ -218,7 +215,7 @@ def generate_pdf_receipt(
         ["Taxable Subtotal (Excl. Tax):", f"Rs. {total_taxable:,.2f}"],
         ["CGST @ 2.5%:", f"Rs. {cgst_val:,.2f}"],
         ["SGST @ 2.5%:", f"Rs. {sgst_val:,.2f}"],
-        ["Delivery & Handling Fee (Agra):", f"Rs. {delivery_fee:,.2f}"],
+        ["Delivery & Handling Fee:", f"Rs. {delivery_fee:,.2f}"],
         ["TOTAL AMOUNT PAID:", f"Rs. {total_amount:,.2f}"]
     ]
 
@@ -239,7 +236,7 @@ def generate_pdf_receipt(
     story.append(Spacer(1, 12))
 
     # 6. QR Code for Invoice Verification
-    qr_code = qr.QrCodeWidget(f"SK-INV-{sale_id}-{total_amount}-AGRA")
+    qr_code = qr.QrCodeWidget(f"SK-INV-{sale_id}-{total_amount}")
     bounds = qr_code.getBounds()
     width = bounds[2] - bounds[0]
     height = bounds[3] - bounds[1]
@@ -251,7 +248,7 @@ def generate_pdf_receipt(
             d,
             Paragraph(
                 "<b>Digital Tax Invoice Verification</b><br/>"
-                "Scan with GPay/PhonePe to verify GST compliance.<br/>"
+                "Scan with GPay/PhonePe/Paytm to verify GST compliance.<br/>"
                 "<i>Returns accepted within 7 days with original invoice.</i>",
                 styles["Normal"]
             )
@@ -279,9 +276,9 @@ def generate_pdf_receipt(
         alignment=1
     )
     story.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor("#cbd5e1"), spaceAfter=6))
-    story.append(Paragraph("Thank you for shopping local with <b>SnapKart Superstore Agra</b>! ❤️", footer_text))
+    story.append(Paragraph("Thank you for shopping with <b>SnapKart Superstore</b>! ❤️", footer_text))
     story.append(Spacer(1, 2))
-    story.append(Paragraph("Sanjay Place, Agra - 282002 • Helpline: +91 562 245 8900 • Email: support@snapkart.in", footer_text))
+    story.append(Paragraph("Helpline: +91 1800 245 8900 • Email: support@snapkart.in", footer_text))
     story.append(Spacer(1, 2))
     story.append(Paragraph("<i>This is a computer-generated GST Tax Invoice under Rule 46 of CGST Rules 2017. Does not require physical signature.</i>", footer_text))
 
@@ -290,7 +287,6 @@ def generate_pdf_receipt(
 
 
 def open_pdf_file(file_path):
-    """Opens the generated PDF file using default system reader."""
     try:
         if sys.platform.startswith("win"):
             os.startfile(file_path)
