@@ -1,7 +1,8 @@
+import os
+import shutil
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 from datetime import datetime
-import shutil
 
 from database.db_connection import get_db_connection, ensure_core_schema
 from common.store_status import check_store_status
@@ -10,16 +11,35 @@ from common.image_loader import get_product_image
 from user_app.auth_ui import AuthDialog
 from user_app.upi_payment_dialog import UPIPaymentDialog
 
+# Popular Agra Localities for Delivery
+AGRA_LOCALITIES = [
+    "Sanjay Place, Agra - 282002",
+    "Kamla Nagar, Agra - 282005",
+    "Dayalbagh, Agra - 282005",
+    "Tajganj, Agra - 282001",
+    "Sadar Bazar, Agra - 282001",
+    "Shahganj, Agra - 282010",
+    "Bodla, Agra - 282007",
+    "Sikandra, Agra - 282007",
+    "Khandari, Agra - 282002",
+    "Civil Lines, Agra - 282002",
+    "Trans Yamuna Colony, Agra - 282006",
+    "Belanganj, Agra - 282004",
+    "Fatehabad Road, Agra - 282001",
+    "Vijay Nagar, Agra - 282004",
+    "Raja Ki Mandi, Agra - 282002",
+]
+
 
 class SnapKartCustomerApp(tk.Tk):
     def __init__(self):
         super().__init__()
 
-        # Ensure database schema is up to date before any queries
+        # Ensure core schema before running queries
         ensure_core_schema()
 
-        self.title("SnapKart - Your Neighbourhood Store, Online")
-        self.geometry("1420x890")
+        self.title("SnapKart Agra - Your Neighbourhood Superstore")
+        self.geometry("1440x900")
         self.minsize(1220, 750)
         self.configure(bg="#f8fafc")
 
@@ -30,15 +50,18 @@ class SnapKartCustomerApp(tk.Tk):
         self.COLOR_MUTED = "#64748b"
         self.COLOR_WHITE = "#ffffff"
         self.COLOR_RED = "#dc2626"
+        self.COLOR_BLUE = "#2563eb"
 
         # Application State
         self.current_user = None
         self.cart = {}
         self.active_category = "All Products"
         self.sort_option = tk.StringVar(value="Popularity")
-        self.image_cache = {}  # Keeps image references alive to prevent garbage collection
+        self.selected_agra_locality = AGRA_LOCALITIES[0]
+        self.selected_house_address = "Flat 102, Block B"
+        self.image_cache = {}
 
-        # Build UI Components
+        # Build Main UI Components
         self.create_top_navbar()
 
         self.body_frame = tk.Frame(self, bg="#f8fafc")
@@ -55,7 +78,7 @@ class SnapKartCustomerApp(tk.Tk):
         self.load_products_from_db()
 
     # =========================================================================
-    # 1. TOP NAVIGATION BAR
+    # 1. TOP NAVIGATION BAR WITH FULL FUNCTIONAL BUTTONS
     # =========================================================================
     def create_top_navbar(self):
         nav = tk.Frame(self, bg=self.COLOR_WHITE, height=64, bd=1, relief=tk.SOLID)
@@ -63,26 +86,56 @@ class SnapKartCustomerApp(tk.Tk):
         nav.pack_propagate(False)
 
         # Brand Title
-        brand_box = tk.Frame(nav, bg=self.COLOR_WHITE)
+        brand_box = tk.Frame(nav, bg=self.COLOR_WHITE, cursor="hand2")
         brand_box.pack(side=tk.LEFT, padx=18)
-        tk.Label(brand_box, text="🛒 SnapKart", font=("Segoe UI", 16, "bold"), fg=self.COLOR_GREEN, bg=self.COLOR_WHITE).pack(anchor="w")
-        tk.Label(brand_box, text="Your Neighbourhood Store, Online", font=("Segoe UI", 7), fg=self.COLOR_MUTED, bg=self.COLOR_WHITE).pack(anchor="w")
+        brand_box.bind("<Button-1>", lambda e: self.show_home_view())
 
-        # Navigation Links
+        lbl_brand = tk.Label(brand_box, text="🛒 SnapKart Agra", font=("Segoe UI", 16, "bold"), fg=self.COLOR_GREEN, bg=self.COLOR_WHITE)
+        lbl_brand.pack(anchor="w")
+        lbl_brand.bind("<Button-1>", lambda e: self.show_home_view())
+
+        lbl_tag = tk.Label(brand_box, text="Agra's Preferred 100% Veg Superstore", font=("Segoe UI", 7), fg=self.COLOR_MUTED, bg=self.COLOR_WHITE)
+        lbl_tag.pack(anchor="w")
+        lbl_tag.bind("<Button-1>", lambda e: self.show_home_view())
+
+        # Functional Navigation Links
         mid_links = tk.Frame(nav, bg=self.COLOR_WHITE)
-        mid_links.pack(side=tk.LEFT, padx=25)
-        for idx, text in enumerate(["🏠 Home", "🛍️ Shop", "🏷️ Offers", "📦 Track Order", "❓ Help"]):
-            fg_col = self.COLOR_GREEN if idx == 0 else self.COLOR_DARK
-            tk.Label(mid_links, text=text, font=("Segoe UI", 9, "bold" if idx == 0 else "normal"), fg=fg_col, bg=self.COLOR_WHITE, padx=8, cursor="hand2").pack(side=tk.LEFT)
+        mid_links.pack(side=tk.LEFT, padx=15)
 
-        # Right-side Account Controls
+        nav_items = [
+            ("🏠 Home", self.show_home_view),
+            ("🛍️ Shop", self.open_shop_department_modal),
+            ("🏷️ Offers", self.open_special_offers_modal),
+            ("📦 My Orders", self.open_customer_orders_modal),
+            ("❓ Help & Support", self.open_help_support_modal),
+        ]
+
+        for text, cmd in nav_items:
+            btn = tk.Label(mid_links, text=text, font=("Segoe UI", 9, "bold"), fg=self.COLOR_DARK, bg=self.COLOR_WHITE, padx=10, cursor="hand2")
+            btn.pack(side=tk.LEFT)
+            btn.bind("<Button-1>", lambda e, c=cmd: c())
+
+        # Right-side Delivery Location & Account Controls
         right_box = tk.Frame(nav, bg=self.COLOR_WHITE)
         right_box.pack(side=tk.RIGHT, padx=18)
 
-        loc_box = tk.Frame(right_box, bg="#f1f5f9", padx=10, pady=4, bd=1, relief=tk.SOLID)
-        loc_box.pack(side=tk.LEFT, padx=(0, 15))
-        tk.Label(loc_box, text="📍 Delivering to Sanjay Place, Agra ▾", font=("Segoe UI", 8, "bold"), bg="#f1f5f9", fg=self.COLOR_DARK).pack()
+        # Agra Location Selector Button
+        self.loc_box = tk.Frame(right_box, bg="#f1f5f9", padx=10, pady=4, bd=1, relief=tk.SOLID, cursor="hand2")
+        self.loc_box.pack(side=tk.LEFT, padx=(0, 15))
+        self.loc_box.bind("<Button-1>", lambda e: self.open_agra_location_modal())
 
+        self.lbl_location = tk.Label(
+            self.loc_box,
+            text=f"📍 Delivering to: {self.selected_agra_locality[:22]}... ▾",
+            font=("Segoe UI", 8, "bold"),
+            bg="#f1f5f9",
+            fg=self.COLOR_DARK,
+            cursor="hand2"
+        )
+        self.lbl_location.pack()
+        self.lbl_location.bind("<Button-1>", lambda e: self.open_agra_location_modal())
+
+        # User Auth Avatar
         tk.Label(right_box, text="👤", font=("Segoe UI", 13), bg=self.COLOR_WHITE).pack(side=tk.LEFT, padx=(0, 5))
         self.profile_info_frame = tk.Frame(right_box, bg=self.COLOR_WHITE)
         self.profile_info_frame.pack(side=tk.LEFT)
@@ -90,10 +143,269 @@ class SnapKartCustomerApp(tk.Tk):
         self.lbl_user_name = tk.Label(self.profile_info_frame, text="Hello, Guest", font=("Segoe UI", 9, "bold"), fg=self.COLOR_DARK, bg=self.COLOR_WHITE)
         self.lbl_user_name.pack(anchor="w")
 
-        self.lbl_user_action = tk.Label(self.profile_info_frame, text="Sign In / Register", font=("Segoe UI", 8), fg="#2563eb", bg=self.COLOR_WHITE, cursor="hand2")
+        self.lbl_user_action = tk.Label(self.profile_info_frame, text="Sign In / Register", font=("Segoe UI", 8), fg=self.COLOR_BLUE, bg=self.COLOR_WHITE, cursor="hand2")
         self.lbl_user_action.pack(anchor="w")
         self.lbl_user_action.bind("<Button-1>", self.handle_user_auth_click)
 
+    # =========================================================================
+    # 2. NAVIGATION MODALS & AGRA LOCATION SELECTOR
+    # =========================================================================
+    def show_home_view(self):
+        self.active_category = "All Products"
+        self.search_entry.delete(0, tk.END)
+        self.load_categories()
+        self.load_products_from_db()
+
+    def open_agra_location_modal(self):
+        win = tk.Toplevel(self)
+        win.title("SnapKart - Delivery Location (Agra Only)")
+        win.geometry("450x380")
+        win.resizable(False, False)
+        win.configure(bg="#ffffff")
+        win.transient(self)
+        win.grab_set()
+
+        tk.Label(win, text="📍 Select Agra Delivery Address", font=("Segoe UI", 12, "bold"), fg=self.COLOR_GREEN, bg="#ffffff").pack(pady=(15, 5))
+        tk.Label(win, text="SnapKart currently delivers exclusively across Agra City", font=("Segoe UI", 8), fg=self.COLOR_MUTED, bg="#ffffff").pack(pady=(0, 12))
+
+        form = tk.Frame(win, bg="#ffffff")
+        form.pack(fill=tk.BOTH, expand=True, padx=25)
+
+        tk.Label(form, text="Select Agra Locality / Area:", font=("Segoe UI", 9, "bold"), bg="#ffffff").pack(anchor="w", pady=(5, 2))
+        combo_loc = ttk.Combobox(form, values=AGRA_LOCALITIES, state="readonly", font=("Segoe UI", 9))
+        combo_loc.set(self.selected_agra_locality)
+        combo_loc.pack(fill=tk.X, ipady=3, pady=(0, 10))
+
+        tk.Label(form, text="House / Flat / Street Details:", font=("Segoe UI", 9, "bold"), bg="#ffffff").pack(anchor="w", pady=(5, 2))
+        entry_house = tk.Entry(form, font=("Segoe UI", 9), bg="#f8fafc", bd=1, relief=tk.SOLID)
+        entry_house.insert(0, self.selected_house_address)
+        entry_house.pack(fill=tk.X, ipady=4, pady=(0, 15))
+
+        def save_location():
+            self.selected_agra_locality = combo_loc.get()
+            self.selected_house_address = entry_house.get().strip() or "Flat 102"
+            short_loc = self.selected_agra_locality.split(",")[0]
+            self.lbl_location.config(text=f"📍 Delivering to: {short_loc}, Agra ▾")
+            messagebox.showinfo("Address Updated", f"Delivery address updated to:\n{self.selected_house_address}, {self.selected_agra_locality}")
+            win.destroy()
+
+        tk.Button(
+            form,
+            text="Confirm Agra Location",
+            font=("Segoe UI", 10, "bold"),
+            bg=self.COLOR_GREEN,
+            fg="#ffffff",
+            relief=tk.FLAT,
+            cursor="hand2",
+            command=save_location
+        ).pack(fill=tk.X, ipady=6)
+
+    def open_shop_department_modal(self):
+        win = tk.Toplevel(self)
+        win.title("SnapKart - Browse Departments")
+        win.geometry("520x450")
+        win.configure(bg="#ffffff")
+        win.transient(self)
+
+        tk.Label(win, text="🏬 All Store Departments", font=("Segoe UI", 13, "bold"), fg=self.COLOR_DARK, bg="#ffffff").pack(pady=12)
+
+        conn = get_db_connection()
+        cats = []
+        if conn:
+            try:
+                c = conn.cursor()
+                c.execute("SELECT DISTINCT category FROM inventory ORDER BY category;")
+                cats = [r[0] for r in c.fetchall()]
+                c.close()
+                conn.close()
+            except Exception:
+                pass
+
+        box = tk.Frame(win, bg="#ffffff")
+        box.pack(fill=tk.BOTH, expand=True, padx=20, pady=10)
+
+        for cat in cats:
+            btn = tk.Button(
+                box,
+                text=f"📦 {cat}",
+                font=("Segoe UI", 9, "bold"),
+                bg="#f1f5f9",
+                fg=self.COLOR_DARK,
+                anchor="w",
+                relief=tk.FLAT,
+                cursor="hand2",
+                command=lambda c=cat: (self.select_category(c), win.destroy())
+            )
+            btn.pack(fill=tk.X, pady=2, ipady=3)
+
+    def open_special_offers_modal(self):
+        win = tk.Toplevel(self)
+        win.title("SnapKart Agra - Special Deals & Offers")
+        win.geometry("550x460")
+        win.configure(bg="#ffffff")
+        win.transient(self)
+
+        tk.Label(win, text="🏷️ Live Agra Store Discount Offers", font=("Segoe UI", 14, "bold"), fg=self.COLOR_GREEN, bg="#ffffff").pack(pady=(14, 4))
+        tk.Label(win, text="Exclusive discounts active for Agra shoppers today!", font=("Segoe UI", 8), fg=self.COLOR_MUTED, bg="#ffffff").pack(pady=(0, 10))
+
+        offers = [
+            ("🥦 Agra Fresh Vegetables", "Flat 15% OFF on all fresh farm produce.", "#dcfce7", "#16a34a"),
+            ("🥛 Amul & Mother Dairy Pack", "Buy 2 Dairy products & get Flat ₹20 Instant Cashback.", "#dbeafe", "#2563eb"),
+            ("🚚 Free Agra Home Delivery", "Zero delivery charges on orders above ₹499.", "#fef3c7", "#d97706"),
+            ("🌾 Grocery Staples Discount", "Up to 20% OFF on Basmati Rice & Desi Ghee.", "#f3e8ff", "#9333ea"),
+            ("💳 UPI Payment Offer", "Extra 5% instant discount on payment via UPI.", "#fee2e2", "#dc2626"),
+        ]
+
+        for title, desc, bg, fg in offers:
+            card = tk.Frame(win, bg=bg, bd=1, relief=tk.SOLID)
+            card.pack(fill=tk.X, padx=20, pady=4, ipady=4)
+            tk.Label(card, text=title, font=("Segoe UI", 10, "bold"), fg=fg, bg=bg).pack(anchor="w", padx=10)
+            tk.Label(card, text=desc, font=("Segoe UI", 8), fg="#334155", bg=bg).pack(anchor="w", padx=10)
+
+    def open_customer_orders_modal(self):
+        win = tk.Toplevel(self)
+        win.title("SnapKart - My Orders & Printable Invoices")
+        win.geometry("780x520")
+        win.configure(bg="#ffffff")
+        win.transient(self)
+
+        tk.Label(win, text="📦 Your Recent Order History", font=("Segoe UI", 13, "bold"), fg=self.COLOR_DARK, bg="#ffffff").pack(pady=(12, 4))
+
+        conn = get_db_connection()
+        if not conn:
+            messagebox.showerror("Error", "Could not connect to database.")
+            return
+
+        cursor = conn.cursor(dictionary=True)
+        cust_id = self.current_user["customer_id"] if self.current_user else None
+
+        if cust_id:
+            cursor.execute("""
+                SELECT sale_id, DATE_FORMAT(sale_datetime, '%Y-%m-%d %h:%i %p') AS s_time,
+                       total_amount, payment_method
+                FROM sales
+                WHERE customer_id = %s
+                ORDER BY sale_datetime DESC;
+            """, (cust_id,))
+        else:
+            cursor.execute("""
+                SELECT sale_id, DATE_FORMAT(sale_datetime, '%Y-%m-%d %h:%i %p') AS s_time,
+                       total_amount, payment_method
+                FROM sales
+                ORDER BY sale_datetime DESC
+                LIMIT 10;
+            """)
+
+        sales = cursor.fetchall()
+        cursor.close()
+        conn.close()
+
+        if not sales:
+            tk.Label(win, text="No previous orders found.", font=("Segoe UI", 10), fg=self.COLOR_MUTED, bg="#ffffff").pack(pady=40)
+            return
+
+        cols = ("id", "date", "amount", "payment")
+        tree = ttk.Treeview(win, columns=cols, show="headings", height=8)
+        tree.heading("id", text="Sale ID")
+        tree.heading("date", text="Order Date & Time")
+        tree.heading("amount", text="Total Paid (₹)")
+        tree.heading("payment", text="Payment Mode")
+
+        tree.column("id", width=80, anchor="center")
+        tree.column("date", width=180, anchor="center")
+        tree.column("amount", width=120, anchor="e")
+        tree.column("payment", width=120, anchor="center")
+
+        for s in sales:
+            tree.insert("", tk.END, values=(
+                f"#{s['sale_id']}",
+                s["s_time"],
+                f"₹ {float(s['total_amount']):.2f}",
+                s["payment_method"] or "UPI"
+            ))
+
+        tree.pack(fill=tk.BOTH, expand=True, padx=20, pady=10)
+
+        def reprint_selected():
+            selected = tree.selection()
+            if not selected:
+                messagebox.showwarning("Select Order", "Please select an order from the list.")
+                return
+            val = tree.item(selected[0], "values")
+            s_id = int(val[0].replace("#", ""))
+
+            # Generate PDF invoice
+            conn = get_db_connection()
+            if conn:
+                c = conn.cursor(dictionary=True)
+                c.execute("""
+                    SELECT i.name, si.quantity, si.unit_price
+                    FROM sale_items si
+                    JOIN inventory i ON si.item_id = i.item_id
+                    WHERE si.sale_id = %s;
+                """, (s_id,))
+                rows = c.fetchall()
+                c.close()
+                conn.close()
+
+                items_dict = {}
+                subtotal = 0.0
+                for idx, r in enumerate(rows, start=1):
+                    qty = int(r["quantity"])
+                    price = float(r["unit_price"])
+                    subtotal += (qty * price)
+                    items_dict[idx] = {"name": r["name"], "price": price, "qty": qty}
+
+                tot_bill = float(val[2].replace("₹", "").strip())
+                pdf = generate_pdf_receipt(
+                    sale_id=s_id,
+                    items_dict=items_dict,
+                    subtotal=subtotal,
+                    delivery_fee=20.0,
+                    total_amount=tot_bill,
+                    customer_name=self.current_user["full_name"] if self.current_user else "Guest Customer",
+                    customer_address=self.selected_agra_locality,
+                    payment_method=val[3]
+                )
+                open_pdf_file(pdf)
+
+        tk.Button(
+            win,
+            text="📄 Re-Download / View Tax Invoice PDF",
+            font=("Segoe UI", 10, "bold"),
+            bg=self.COLOR_GREEN,
+            fg="#ffffff",
+            relief=tk.FLAT,
+            cursor="hand2",
+            command=reprint_selected
+        ).pack(fill=tk.X, padx=20, pady=(0, 15), ipady=5)
+
+    def open_help_support_modal(self):
+        win = tk.Toplevel(self)
+        win.title("SnapKart Agra - Help & Customer Desk")
+        win.geometry("500x420")
+        win.configure(bg="#ffffff")
+        win.transient(self)
+
+        tk.Label(win, text="❓ SnapKart Agra Help Center", font=("Segoe UI", 13, "bold"), fg=self.COLOR_GREEN, bg="#ffffff").pack(pady=(15, 4))
+
+        info_text = (
+            "📍 Store Address:\n"
+            "Plot No. 45, Commercial Complex, Sanjay Place, Agra - 282002\n\n"
+            "📞 Agra Helpline: +91 562 245 8900\n"
+            "✉️ Email Support: support@snapkart.in\n"
+            "🕒 Operating Hours: 09:00 AM – 10:00 PM (Mon-Sun)\n\n"
+            "Frequently Asked Questions:\n"
+            "• Delivery Time: 30-45 Minutes across Agra city.\n"
+            "• Returns Policy: Easy 7-day returns on non-perishable goods.\n"
+            "• Payment Modes: UPI, GPay, PhonePe, Paytm, Cash."
+        )
+
+        tk.Label(win, text=info_text, font=("Segoe UI", 9), fg="#334155", bg="#f8fafc", justify="left", padx=15, pady=15, bd=1, relief=tk.SOLID).pack(fill=tk.BOTH, expand=True, padx=20, pady=10)
+
+    # =========================================================================
+    # 3. AUTH LOGIC
+    # =========================================================================
     def handle_user_auth_click(self, event=None):
         if self.current_user is None:
             AuthDialog(self, on_login_success=self.on_user_logged_in)
@@ -101,7 +413,7 @@ class SnapKartCustomerApp(tk.Tk):
             if messagebox.askyesno("Log Out", f"Log out from account {self.current_user['full_name']}?"):
                 self.current_user = None
                 self.lbl_user_name.config(text="Hello, Guest")
-                self.lbl_user_action.config(text="Sign In / Register", fg="#2563eb")
+                self.lbl_user_action.config(text="Sign In / Register", fg=self.COLOR_BLUE)
                 messagebox.showinfo("Logged Out", "You have logged out successfully.")
 
     def on_user_logged_in(self, user_data):
@@ -111,7 +423,7 @@ class SnapKartCustomerApp(tk.Tk):
         self.lbl_user_action.config(text="Log Out", fg=self.COLOR_RED)
 
     # =========================================================================
-    # 2. LEFT SIDEBAR: STORE STATUS & CATEGORIES
+    # 4. LEFT SIDEBAR: STORE STATUS & CATEGORIES
     # =========================================================================
     def create_left_sidebar(self, parent):
         sidebar = tk.Frame(parent, bg="#f8fafc", width=235)
@@ -138,8 +450,8 @@ class SnapKartCustomerApp(tk.Tk):
         self.lbl_hours_info = tk.Label(self.status_card, text="🕒 Operating Hours\n09:00 AM – 10:00 PM", font=("Segoe UI", 8), fg=self.COLOR_MUTED, bg=self.COLOR_WHITE)
         self.lbl_hours_info.pack(padx=10, pady=(0, 4))
 
-        for perk in ["✨ Fresh Products", "⚡ Quick Delivery", "🔒 Secure Payments", "💰 Best Daily Prices"]:
-            tk.Label(self.status_card, text=perk, font=("Segoe UI", 7), fg=self.COLOR_MUTED, bg=self.COLOR_WHITE, anchor="w").pack(fill=tk.X, padx=14, pady=1)
+        for perk in ["🌱 100% Veg Guarantee", "⚡ 30-Min Agra Delivery", "🔒 Secure UPI Payments", "💰 Real Market MRP Prices"]:
+            tk.Label(self.status_card, text=perk, font=("Segoe UI", 7, "bold"), fg=self.COLOR_MUTED, bg=self.COLOR_WHITE, anchor="w").pack(fill=tk.X, padx=14, pady=1)
 
         # Categories Menu Box
         cat_box = tk.Frame(sidebar, bg=self.COLOR_WHITE, bd=1, relief=tk.SOLID)
@@ -158,7 +470,6 @@ class SnapKartCustomerApp(tk.Tk):
         cat_scroll.pack(side=tk.RIGHT, fill=tk.Y)
         self.cat_canvas.configure(yscrollcommand=cat_scroll.set)
 
-        # Mousewheel support for categories
         self.cat_canvas.bind("<Enter>", lambda e: self._bind_mousewheel(self.cat_canvas))
         self.cat_canvas.bind("<Leave>", lambda e: self._unbind_mousewheel())
 
@@ -208,7 +519,7 @@ class SnapKartCustomerApp(tk.Tk):
         self.load_products_from_db()
 
     # =========================================================================
-    # 3. CENTER CATALOG: BANNER, SEARCH, SORT & PRODUCT GRID
+    # 5. CENTER CATALOG: BANNER, SEARCH, SORT & PRODUCT GRID
     # =========================================================================
     def create_center_catalog(self, parent):
         center = tk.Frame(parent, bg="#f8fafc")
@@ -220,8 +531,8 @@ class SnapKartCustomerApp(tk.Tk):
 
         b_text = tk.Frame(banner, bg="#e0f2fe")
         b_text.pack(side=tk.LEFT, padx=16)
-        tk.Label(b_text, text="FRESHER. FASTER. CLOSER TO YOU.", font=("Segoe UI", 7, "bold"), fg="#0284c7", bg="#e0f2fe").pack(anchor="w")
-        tk.Label(b_text, text="Everything You Need, Just a Few Clicks Away!", font=("Segoe UI", 12, "bold"), fg="#0f172a", bg="#e0f2fe").pack(anchor="w")
+        tk.Label(b_text, text="AGRA'S LARGEST 100% VEGETARIAN ONLINE SUPERMARKET", font=("Segoe UI", 7, "bold"), fg="#0284c7", bg="#e0f2fe").pack(anchor="w")
+        tk.Label(b_text, text="10,000+ Fresh Products at Real Market Prices!", font=("Segoe UI", 12, "bold"), fg="#0f172a", bg="#e0f2fe").pack(anchor="w")
 
         # Search Bar and Sort Options
         top_filter_row = tk.Frame(center, bg="#f8fafc")
@@ -267,7 +578,6 @@ class SnapKartCustomerApp(tk.Tk):
         self.grid_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         grid_scroll.pack(side=tk.RIGHT, fill=tk.Y)
 
-        # Mousewheel support for product grid
         self.grid_canvas.bind("<Enter>", lambda e: self._bind_mousewheel(self.grid_canvas))
         self.grid_canvas.bind("<Leave>", lambda e: self._unbind_mousewheel())
 
@@ -306,7 +616,7 @@ class SnapKartCustomerApp(tk.Tk):
             else:
                 query += " ORDER BY item_id ASC"
 
-            query += " LIMIT 30;"
+            query += " LIMIT 60;"
             cursor.execute(query, params)
             products = cursor.fetchall()
             cursor.close()
@@ -324,7 +634,7 @@ class SnapKartCustomerApp(tk.Tk):
             self.create_single_product_card(self.cards_frame, prod, r, c)
 
     def create_single_product_card(self, parent, prod, r, c):
-        card = tk.Frame(parent, bg=self.COLOR_WHITE, bd=1, relief=tk.SOLID, width=225, height=265)
+        card = tk.Frame(parent, bg=self.COLOR_WHITE, bd=1, relief=tk.SOLID, width=225, height=270)
         card.grid(row=r, column=c, padx=6, pady=6, sticky="nsew")
         card.grid_propagate(False)
 
@@ -348,7 +658,7 @@ class SnapKartCustomerApp(tk.Tk):
             stock_fg = self.COLOR_MUTED
             stock_text = f"Stock: {stock_qty}"
 
-        tk.Label(tag_row, text="Bestseller", font=("Segoe UI", 7, "bold"), bg="#fee2e2", fg="#dc2626", padx=4).pack(side=tk.LEFT)
+        tk.Label(tag_row, text="🌱 100% Veg", font=("Segoe UI", 7, "bold"), bg="#dcfce7", fg=self.COLOR_GREEN, padx=4).pack(side=tk.LEFT)
         tk.Label(tag_row, text=stock_text, font=("Segoe UI", 7), fg=stock_fg, bg=self.COLOR_WHITE).pack(side=tk.RIGHT)
 
         # 3. Product Details
@@ -380,7 +690,7 @@ class SnapKartCustomerApp(tk.Tk):
         btn_add.pack(side=tk.RIGHT)
 
     # =========================================================================
-    # 4. RIGHT SIDEBAR: CART CONTAINER
+    # 6. RIGHT SIDEBAR: CART CONTAINER
     # =========================================================================
     def create_right_cart_panel(self, parent):
         self.cart_panel = tk.Frame(parent, bg=self.COLOR_WHITE, width=320, bd=1, relief=tk.SOLID)
@@ -410,7 +720,6 @@ class SnapKartCustomerApp(tk.Tk):
         self.cart_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         c_scroll.pack(side=tk.RIGHT, fill=tk.Y)
 
-        # Mousewheel support for cart
         self.cart_canvas.bind("<Enter>", lambda e: self._bind_mousewheel(self.cart_canvas))
         self.cart_canvas.bind("<Leave>", lambda e: self._unbind_mousewheel())
 
@@ -418,7 +727,7 @@ class SnapKartCustomerApp(tk.Tk):
         summary_box.pack(fill=tk.X, padx=10, pady=(4, 6), ipady=4)
 
         self.lbl_subtotal = self.make_summary_row(summary_box, "Subtotal", "₹ 0.00")
-        self.lbl_delivery = self.make_summary_row(summary_box, "Delivery Charge", "₹ 20.00")
+        self.lbl_delivery = self.make_summary_row(summary_box, "Agra Delivery Fee", "₹ 20.00")
         self.lbl_total = self.make_summary_row(summary_box, "Total Amount", "₹ 0.00", is_total=True)
 
         self.btn_checkout = tk.Button(
@@ -445,7 +754,7 @@ class SnapKartCustomerApp(tk.Tk):
         return val_lbl
 
     # =========================================================================
-    # 5. CART INTERACTION HANDLERS
+    # 7. CART HANDLERS
     # =========================================================================
     def add_to_cart(self, prod):
         p_id = prod["item_id"]
@@ -521,7 +830,7 @@ class SnapKartCustomerApp(tk.Tk):
         self.lbl_total.config(text=f"₹ {total_bill:,.2f}")
 
     # =========================================================================
-    # 6. BUSINESS HOURS AWARE CHECKOUT & SIMULATED UPI FLOW
+    # 8. BUSINESS HOURS & CHECKOUT FLOW
     # =========================================================================
     def refresh_store_status(self):
         is_open, msg = check_store_status()
@@ -533,19 +842,16 @@ class SnapKartCustomerApp(tk.Tk):
             self.btn_checkout.config(state=tk.DISABLED, bg="#94a3b8", text="⛔ Store is Closed")
 
     def process_order_checkout(self):
-        # 1. Store Hours Gatekeeper
         is_open, status_msg = check_store_status()
         if not is_open:
             messagebox.showerror("Transaction Locked", f"Store is currently closed!\n\n{status_msg}")
             self.refresh_store_status()
             return
 
-        # 2. Check Empty Cart
         if not self.cart:
             messagebox.showwarning("Empty Cart", "Your cart is empty!")
             return
 
-        # 3. Recommend Sign In for Guests
         if self.current_user is None:
             if messagebox.askyesno("Sign In Recommended", "You are checking out as Guest.\n\nWould you like to Log In or Sign Up first?"):
                 AuthDialog(self, on_login_success=self.on_user_logged_in)
@@ -555,7 +861,7 @@ class SnapKartCustomerApp(tk.Tk):
         total_bill = subtotal + 20.0
         cust_name = self.current_user["full_name"] if self.current_user else "Guest Customer"
 
-        # 4. Open Simulated UPI Payment Gateway
+        # Open Simulated UPI Gateway
         UPIPaymentDialog(
             parent=self,
             total_amount=total_bill,
@@ -575,14 +881,14 @@ class SnapKartCustomerApp(tk.Tk):
             now = datetime.now()
             cust_id = self.current_user["customer_id"] if self.current_user else None
 
-            # 1. Insert Transaction into MySQL
+            # Insert Sale Record
             cursor.execute(
                 "INSERT INTO sales (sale_datetime, total_amount, payment_method, customer_id) VALUES (%s, %s, %s, %s)",
                 (now, total_bill, "UPI", cust_id)
             )
             sale_id = cursor.lastrowid
 
-            # 2. Insert Items and Deduct Inventory Stock
+            # Insert Sale Items & Deduct Stock
             for p_id, item in self.cart.items():
                 item_sub = item["price"] * item["qty"]
                 cursor.execute(
@@ -596,15 +902,10 @@ class SnapKartCustomerApp(tk.Tk):
 
             conn.commit()
 
-            # 3. Prompt User for Printable Receipt Download
-            ask_download = messagebox.askyesno(
-                "Payment Successful! 🎉",
-                f"UPI Payment of ₹ {total_bill:,.2f} was successful!\n\n"
-                f"Invoice ID: #{sale_id}\n\n"
-                "Would you like to download your printable bill receipt now?"
-            )
+            # Full Agra Delivery Address
+            full_addr = f"{self.selected_house_address}, {self.selected_agra_locality}"
 
-            # Generate Standard PDF in receipts/
+            # Generate Official GST Tax Invoice PDF
             default_pdf = generate_pdf_receipt(
                 sale_id=sale_id,
                 items_dict=self.cart,
@@ -612,30 +913,35 @@ class SnapKartCustomerApp(tk.Tk):
                 delivery_fee=20.0,
                 total_amount=total_bill,
                 customer_name=cust_name,
+                customer_address=full_addr,
                 payment_method="UPI"
+            )
+
+            ask_download = messagebox.askyesno(
+                "Payment Successful! 🎉",
+                f"UPI Payment of ₹ {total_bill:,.2f} was successful!\n\n"
+                f"GST Tax Invoice ID: #SK-2026-{sale_id:06d}\n"
+                f"Delivering to: {full_addr}\n\n"
+                "Would you like to download your official Tax Invoice bill now?"
             )
 
             if ask_download:
                 chosen_file_path = filedialog.asksaveasfilename(
-                    initialfile=f"SnapKart_Invoice_{sale_id}.pdf",
+                    initialfile=f"SnapKart_TaxInvoice_{sale_id}.pdf",
                     defaultextension=".pdf",
                     filetypes=[("PDF Document", "*.pdf"), ("All Files", "*.*")],
-                    title="Download Your SnapKart Bill"
+                    title="Download Your SnapKart Tax Invoice"
                 )
 
                 if chosen_file_path:
                     shutil.copyfile(default_pdf, chosen_file_path)
-                    messagebox.showinfo(
-                        "Download Complete",
-                        f"Your bill has been downloaded successfully to:\n{chosen_file_path}"
-                    )
+                    messagebox.showinfo("Download Complete", f"Your tax invoice has been saved to:\n{chosen_file_path}")
                     open_pdf_file(chosen_file_path)
                 else:
                     open_pdf_file(default_pdf)
             else:
                 open_pdf_file(default_pdf)
 
-            # Refresh Catalog and Reset Cart
             self.clear_cart()
             self.load_products_from_db()
 
@@ -651,34 +957,28 @@ class SnapKartCustomerApp(tk.Tk):
                 conn.close()
 
     # =========================================================================
-    # 7. MOUSEWHEEL SUPPORT
+    # 9. MOUSEWHEEL & FOOTER
     # =========================================================================
     def _bind_mousewheel(self, canvas):
-        """Bind mousewheel scrolling to the given canvas."""
         self._active_canvas = canvas
         self.bind_all("<MouseWheel>", self._on_mousewheel)
 
     def _unbind_mousewheel(self):
-        """Unbind mousewheel scrolling."""
         self.unbind_all("<MouseWheel>")
         self._active_canvas = None
 
     def _on_mousewheel(self, event):
-        """Handle mousewheel scroll events."""
         if hasattr(self, '_active_canvas') and self._active_canvas:
             self._active_canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
 
-    # =========================================================================
-    # 8. FOOTER
-    # =========================================================================
     def create_bottom_footer(self):
         footer = tk.Frame(self, bg=self.COLOR_WHITE, height=34, bd=1, relief=tk.SOLID)
         footer.pack(fill=tk.X, side=tk.BOTTOM)
         footer.pack_propagate(False)
 
-        perks = "🛡️ Quality Products • 🚚 Fast Delivery • 💳 Secure Payments • 📍 Sanjay Place, Agra - 282002"
+        perks = "🌱 100% Veg Guarantee • 🚚 30-Min Agra Delivery • 💳 Instant UPI • 📍 Sanjay Place, Agra - 282002"
         tk.Label(footer, text=perks, font=("Segoe UI", 8), fg=self.COLOR_MUTED, bg=self.COLOR_WHITE).pack(side=tk.LEFT, padx=18)
-        tk.Label(footer, text="Thank you for shopping local! ❤️", font=("Segoe UI", 8, "italic"), fg=self.COLOR_MUTED, bg=self.COLOR_WHITE).pack(side=tk.RIGHT, padx=18)
+        tk.Label(footer, text="Thank you for shopping local with SnapKart! ❤️", font=("Segoe UI", 8, "italic"), fg=self.COLOR_MUTED, bg=self.COLOR_WHITE).pack(side=tk.RIGHT, padx=18)
 
 
 if __name__ == "__main__":

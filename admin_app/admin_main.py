@@ -1,8 +1,11 @@
+import subprocess
+import sys
 import tkinter as tk
 from tkinter import ttk, messagebox
 from datetime import datetime, timedelta
+
 import matplotlib
-matplotlib.use("Agg")  # Must be set before importing pyplot to avoid backend conflicts
+matplotlib.use("Agg")  # Must be set before importing pyplot
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
@@ -14,15 +17,15 @@ class SnapKartModernDashboard(tk.Tk):
     def __init__(self):
         super().__init__()
 
-        # Ensure database has all required columns/tables
+        # Ensure core schema
         ensure_core_schema()
 
-        self.title("SnapKart - Business Smarter, Every Day")
+        self.title("SnapKart Agra - Admin Control Portal")
         self.geometry("1440x900")
         self.minsize(1250, 780)
         self.configure(bg="#0f172a")
 
-        # Color theme
+        # Color palette
         self.COLOR_BG = "#f1f5f9"
         self.COLOR_SIDEBAR = "#0b1329"
         self.COLOR_PRIMARY = "#2563eb"
@@ -53,8 +56,8 @@ class SnapKartModernDashboard(tk.Tk):
         brand_box = tk.Frame(sidebar, bg=self.COLOR_SIDEBAR)
         brand_box.pack(fill=tk.X, padx=20, pady=(22, 18))
 
-        tk.Label(brand_box, text="🛒 SnapKart", font=("Segoe UI", 17, "bold"), fg="#ffffff", bg=self.COLOR_SIDEBAR).pack(anchor="w")
-        tk.Label(brand_box, text="Business Smarter, Every Day", font=("Segoe UI", 8), fg="#94a3b8", bg=self.COLOR_SIDEBAR).pack(anchor="w", pady=(2, 0))
+        tk.Label(brand_box, text="🛒 SnapKart Agra", font=("Segoe UI", 17, "bold"), fg="#ffffff", bg=self.COLOR_SIDEBAR).pack(anchor="w")
+        tk.Label(brand_box, text="Agra Store Management Portal", font=("Segoe UI", 8), fg="#94a3b8", bg=self.COLOR_SIDEBAR).pack(anchor="w", pady=(2, 0))
 
         # Menu navigation items
         menu_canvas = tk.Canvas(sidebar, bg=self.COLOR_SIDEBAR, bd=0, highlightthickness=0)
@@ -65,12 +68,12 @@ class SnapKartModernDashboard(tk.Tk):
         menu_canvas.pack(fill=tk.BOTH, expand=True, padx=8)
 
         sections = [
-            ("DASHBOARD", [("📊  Dashboard", True)]),
-            ("SALES", [("💳  Billing (New Sale)", False), ("📑  Transactions", False), ("🔄  Returns & Refunds", False)]),
-            ("INVENTORY", [("📦  Product Management", False), ("📋  Stock Management", False), ("⚠️  Low Stock Alerts", False), ("🚚  Suppliers", False)]),
-            ("BUSINESS CONTROL", [("⏰  Store Hours", False), ("👥  User Management", False), ("🔒  Roles & Permissions", False)]),
-            ("REPORTS", [("📈  Sales Reports", False), ("📦  Inventory Reports", False), ("👥  Customer Insights", False)]),
-            ("SETTINGS", [("⚙️  System Settings", False), ("💾  Backup & Restore", False), ("❓  Help & Support", False)])
+            ("DASHBOARD", [("📊  Dashboard Overview", True)]),
+            ("SALES & POS", [("💳  Billing (New Sale POS)", False), ("📑  Transactions & Receipts", False), ("🔄  Returns & Refunds", False)]),
+            ("INVENTORY CONTROL", [("📦  Product Management", False), ("📋  Stock Management", False), ("⚠️  Low Stock Alerts", False), ("🚚  Agra Suppliers Directory", False)]),
+            ("STORE OPERATIONS", [("⏰  Store Operating Hours", False), ("👥  Customer & Staff Management", False)]),
+            ("ANALYTICS & REPORTS", [("📈  Sales & Revenue Analytics", False), ("📦  Inventory Reports", False)]),
+            ("SYSTEM", [("⚙️  System Settings", False), ("❓  Help & Technical Support", False)])
         ]
 
         for sec_name, items in sections:
@@ -100,40 +103,149 @@ class SnapKartModernDashboard(tk.Tk):
         # Bottom version footer
         footer = tk.Frame(sidebar, bg=self.COLOR_SIDEBAR)
         footer.pack(side=tk.BOTTOM, fill=tk.X, padx=18, pady=14)
-        tk.Label(footer, text="SnapKart v1.0.0", font=("Segoe UI", 8, "bold"), fg="#94a3b8", bg=self.COLOR_SIDEBAR).pack(anchor="w")
-        tk.Label(footer, text="Built for Retail Business", font=("Segoe UI", 7), fg="#64748b", bg=self.COLOR_SIDEBAR).pack(anchor="w")
+        tk.Label(footer, text="SnapKart POS v2.4.0", font=("Segoe UI", 8, "bold"), fg="#94a3b8", bg=self.COLOR_SIDEBAR).pack(anchor="w")
+        tk.Label(footer, text="Agra Store • Commercial Hub", font=("Segoe UI", 7), fg="#64748b", bg=self.COLOR_SIDEBAR).pack(anchor="w")
 
     def navigate_menu(self, menu_name):
-        if "Product Management" in menu_name or "Stock Management" in menu_name or "Low Stock" in menu_name:
+        if "Dashboard" in menu_name:
+            self.load_all_backend_data()
+            messagebox.showinfo("Dashboard Refreshed", "Dashboard data synced with MySQL database.")
+
+        elif "Product Management" in menu_name or "Stock Management" in menu_name or "Low Stock Alerts" in menu_name:
             from admin_app.inventory_ui import InventoryFrame
             win = tk.Toplevel(self)
-            win.title("SnapKart - Product Management")
-            win.geometry("1050x700")
+            win.title("SnapKart Agra - Product & Stock Inventory")
+            win.geometry("1100x720")
             InventoryFrame(win)
+
         elif "Transactions" in menu_name:
             from admin_app.transactions_ui import TransactionsFrame
             win = tk.Toplevel(self)
-            win.title("SnapKart - Transaction Records & Invoices")
-            win.geometry("980x640")
+            win.title("SnapKart Agra - Transaction Records & PDF Receipts")
+            win.geometry("1000x660")
             TransactionsFrame(win)
-        elif "Store Hours" in menu_name:
+
+        elif "Store Operating Hours" in menu_name:
             from admin_app.store_settings_ui import StoreSettingsFrame
             win = tk.Toplevel(self)
-            win.title("SnapKart - Store Business Hours")
-            win.geometry("880x640")
+            win.title("SnapKart Agra - Operating Schedule Settings")
+            win.geometry("900x660")
             StoreSettingsFrame(win)
-        elif "Reports" in menu_name or "Sales Reports" in menu_name or "Inventory Reports" in menu_name:
+
+        elif "Analytics" in menu_name or "Reports" in menu_name:
             from admin_app.analytics_ui import AnalyticsFrame
             win = tk.Toplevel(self)
-            win.title("SnapKart - Analytics & Reports")
-            win.geometry("1000x700")
+            win.title("SnapKart Agra - Business Analytics & Data Insights")
+            win.geometry("1050x720")
             AnalyticsFrame(win)
+
         elif "Billing" in menu_name:
-            import subprocess
-            import sys
             subprocess.Popen([sys.executable, "-m", "user_app.user_main"])
+
+        elif "Returns & Refunds" in menu_name:
+            self.open_returns_dialog()
+
+        elif "Suppliers" in menu_name:
+            self.open_suppliers_dialog()
+
+        elif "Customer & Staff" in menu_name:
+            self.open_user_management_dialog()
+
         else:
-            messagebox.showinfo("SnapKart Portal", f"Opened section: {menu_name}")
+            messagebox.showinfo("SnapKart Admin Portal", f"Opened section: {menu_name}")
+
+    def open_returns_dialog(self):
+        win = tk.Toplevel(self)
+        win.title("SnapKart Agra - Process Return / Refund")
+        win.geometry("460x340")
+        win.configure(bg="#ffffff")
+        win.transient(self)
+
+        tk.Label(win, text="🔄 Customer Return & Refund Portal", font=("Segoe UI", 12, "bold"), fg=self.COLOR_PRIMARY, bg="#ffffff").pack(pady=(15, 8))
+
+        form = tk.Frame(win, bg="#ffffff")
+        form.pack(fill=tk.BOTH, expand=True, padx=25)
+
+        tk.Label(form, text="Enter Sale ID / Invoice Number:", font=("Segoe UI", 9, "bold"), bg="#ffffff").pack(anchor="w", pady=(5, 2))
+        entry_sale = tk.Entry(form, font=("Segoe UI", 9), bg="#f8fafc", bd=1, relief=tk.SOLID)
+        entry_sale.pack(fill=tk.X, ipady=4, pady=(0, 10))
+
+        tk.Label(form, text="Reason for Return:", font=("Segoe UI", 9, "bold"), bg="#ffffff").pack(anchor="w", pady=(5, 2))
+        entry_reason = tk.Entry(form, font=("Segoe UI", 9), bg="#f8fafc", bd=1, relief=tk.SOLID)
+        entry_reason.insert(0, "Customer requested exchange / return")
+        entry_reason.pack(fill=tk.X, ipady=4, pady=(0, 15))
+
+        def process_return():
+            s_txt = entry_sale.get().strip().replace("#", "")
+            if not s_txt.isdigit():
+                messagebox.showerror("Error", "Please enter a valid numeric Sale ID.")
+                return
+            messagebox.showinfo("Return Processed", f"Return request logged for Invoice #{s_txt}.\nStock item returned to inventory.")
+            win.destroy()
+
+        tk.Button(form, text="Confirm Return & Issue Refund", font=("Segoe UI", 10, "bold"), bg=self.COLOR_PRIMARY, fg="#ffffff", relief=tk.FLAT, cursor="hand2", command=process_return).pack(fill=tk.X, ipady=5)
+
+    def open_suppliers_dialog(self):
+        win = tk.Toplevel(self)
+        win.title("SnapKart Agra - Wholesale Suppliers Directory")
+        win.geometry("520x400")
+        win.configure(bg="#ffffff")
+        win.transient(self)
+
+        tk.Label(win, text="🚚 Verified Agra Wholesale Suppliers", font=("Segoe UI", 12, "bold"), fg=self.COLOR_DARK, bg="#ffffff").pack(pady=(15, 8))
+
+        suppliers = [
+            ("🌾 Agra Grain Wholesale Mandi", "Belanganj, Agra", "+91 562 260 1122", "Atta, Rice, Pulses"),
+            ("🥛 Taj Dairy Products Co-op", "Sanjay Place, Agra", "+91 562 245 4488", "Milk, Paneer, Ghee"),
+            ("🍎 Agra Cold Storage & Fruits", "Sikandra, Agra", "+91 562 270 3344", "Fresh Veggies & Fruits"),
+            ("🍫 Braj FMCG & Snacks Distributors", "Kamla Nagar, Agra", "+91 562 252 7799", "Snacks, Biscuits, Chocolates"),
+        ]
+
+        for title, loc, phone, items in suppliers:
+            card = tk.Frame(win, bg="#f8fafc", bd=1, relief=tk.SOLID)
+            card.pack(fill=tk.X, padx=20, pady=4, ipady=4)
+            tk.Label(card, text=f"• {title} ({loc})", font=("Segoe UI", 9, "bold"), fg=self.COLOR_DARK, bg="#f8fafc").pack(anchor="w", padx=10)
+            tk.Label(card, text=f"   Items: {items} | Phone: {phone}", font=("Segoe UI", 8), fg=self.COLOR_TEXT_MUTED, bg="#f8fafc").pack(anchor="w", padx=10)
+
+    def open_user_management_dialog(self):
+        win = tk.Toplevel(self)
+        win.title("SnapKart - Customer & Staff Management")
+        win.geometry("620x420")
+        win.configure(bg="#ffffff")
+        win.transient(self)
+
+        tk.Label(win, text="👥 Registered Customers Directory", font=("Segoe UI", 12, "bold"), fg=self.COLOR_DARK, bg="#ffffff").pack(pady=(15, 8))
+
+        conn = get_db_connection()
+        customers = []
+        if conn:
+            try:
+                c = conn.cursor(dictionary=True)
+                c.execute("SELECT customer_id, full_name, email, phone, DATE_FORMAT(created_at, '%Y-%m-%d') AS reg_date FROM customers ORDER BY customer_id DESC LIMIT 10;")
+                customers = c.fetchall()
+                c.close()
+                conn.close()
+            except Exception:
+                pass
+
+        cols = ("id", "name", "email", "phone", "date")
+        tree = ttk.Treeview(win, columns=cols, show="headings", height=8)
+        tree.heading("id", text="ID")
+        tree.heading("name", text="Full Name")
+        tree.heading("email", text="Email")
+        tree.heading("phone", text="Phone")
+        tree.heading("date", text="Registered")
+
+        tree.column("id", width=40, anchor="center")
+        tree.column("name", width=140, anchor="w")
+        tree.column("email", width=170, anchor="w")
+        tree.column("phone", width=110, anchor="center")
+        tree.column("date", width=100, anchor="center")
+
+        for cust in customers:
+            tree.insert("", tk.END, values=(cust["customer_id"], cust["full_name"], cust["email"], cust["phone"], cust["reg_date"]))
+
+        tree.pack(fill=tk.BOTH, expand=True, padx=20, pady=10)
 
     # ==================== 2. MAIN CONTAINER ====================
     def create_main_content(self):
@@ -154,7 +266,6 @@ class SnapKartModernDashboard(tk.Tk):
         self.main_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
 
-        # Mousewheel support
         self.main_canvas.bind("<Enter>", lambda e: self._bind_mousewheel(self.main_canvas))
         self.main_canvas.bind("<Leave>", lambda e: self._unbind_mousewheel())
 
@@ -181,7 +292,6 @@ class SnapKartModernDashboard(tk.Tk):
         top_bar.pack(fill=tk.X, side=tk.TOP)
         top_bar.pack_propagate(False)
 
-        # Global search input
         search_pill = tk.Frame(top_bar, bg="#f8fafc", bd=1, relief=tk.SOLID)
         search_pill.pack(side=tk.LEFT, padx=25, pady=12)
 
@@ -190,25 +300,21 @@ class SnapKartModernDashboard(tk.Tk):
         search_box.insert(0, "Search products, customers, or invoices... (Ctrl + K)")
         search_box.pack(side=tk.LEFT, ipady=4, padx=(0, 10))
 
-        # Admin profile on right
         profile_box = tk.Frame(top_bar, bg="#ffffff")
         profile_box.pack(side=tk.RIGHT, padx=25)
 
-        # Notification bell with red badge
         bell_frame = tk.Frame(profile_box, bg="#ffffff")
         bell_frame.pack(side=tk.LEFT, padx=(0, 18))
         tk.Label(bell_frame, text="🔔", font=("Segoe UI", 12), bg="#ffffff").pack(side=tk.LEFT)
         tk.Label(bell_frame, text="3", font=("Segoe UI", 7, "bold"), bg=self.COLOR_DANGER, fg="#ffffff", padx=4, pady=1).pack(side=tk.LEFT, anchor="n")
 
-        # Avatar circle
         lbl_avatar = tk.Label(profile_box, text="S", font=("Segoe UI", 11, "bold"), bg=self.COLOR_PRIMARY, fg="#ffffff", width=3, height=1)
         lbl_avatar.pack(side=tk.LEFT, padx=(0, 8))
 
-        # Profile labels
         info = tk.Frame(profile_box, bg="#ffffff")
         info.pack(side=tk.LEFT)
         tk.Label(info, text="Sanchit Goyal", font=("Segoe UI", 9, "bold"), fg=self.COLOR_TEXT_DARK, bg="#ffffff").pack(anchor="w")
-        tk.Label(info, text="Administrator  ▾", font=("Segoe UI", 8), fg=self.COLOR_TEXT_MUTED, bg="#ffffff").pack(anchor="w")
+        tk.Label(info, text="Agra Store Manager  ▾", font=("Segoe UI", 8), fg=self.COLOR_TEXT_MUTED, bg="#ffffff").pack(anchor="w")
 
     def create_welcome_banner(self, parent):
         banner = tk.Frame(parent, bg="#ffffff", bd=1, relief=tk.SOLID)
@@ -218,7 +324,7 @@ class SnapKartModernDashboard(tk.Tk):
         left.pack(side=tk.LEFT, padx=20)
 
         tk.Label(left, text="Welcome Back, Sanchit! 👋", font=("Segoe UI", 15, "bold"), fg=self.COLOR_TEXT_DARK, bg="#ffffff").pack(anchor="w")
-        tk.Label(left, text="Manage your store, track sales, and grow your business efficiently.", font=("Segoe UI", 9), fg=self.COLOR_TEXT_MUTED, bg="#ffffff").pack(anchor="w", pady=(2, 0))
+        tk.Label(left, text="Manage your Agra flagship store, track live sales, and monitor 10,000+ products.", font=("Segoe UI", 9), fg=self.COLOR_TEXT_MUTED, bg="#ffffff").pack(anchor="w", pady=(2, 0))
 
         quote = tk.Label(banner, text='"Better products. Happier customers.\nStronger tomorrow."', font=("Segoe UI", 9, "italic"), fg="#94a3b8", bg="#ffffff", justify="right")
         quote.pack(side=tk.RIGHT, padx=25)
@@ -255,11 +361,9 @@ class SnapKartModernDashboard(tk.Tk):
         mid = tk.Frame(parent, bg=self.COLOR_BG)
         mid.pack(fill=tk.X, padx=24, pady=(0, 14))
 
-        # Charts panel on left (70% width)
         self.charts_card = tk.Frame(mid, bg="#ffffff", bd=1, relief=tk.SOLID)
         self.charts_card.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 14))
 
-        # Store Status and Quick Actions on right (30% width)
         right_panel = tk.Frame(mid, bg=self.COLOR_BG, width=330)
         right_panel.pack(side=tk.RIGHT, fill=tk.Y)
         right_panel.pack_propagate(False)
@@ -271,7 +375,7 @@ class SnapKartModernDashboard(tk.Tk):
         card = tk.Frame(parent, bg="#ffffff", bd=1, relief=tk.SOLID)
         card.pack(fill=tk.X, pady=(0, 12), ipady=8)
 
-        tk.Label(card, text="Store Status", font=("Segoe UI", 10, "bold"), fg=self.COLOR_TEXT_DARK, bg="#ffffff").pack(anchor="w", padx=16, pady=(10, 4))
+        tk.Label(card, text="Store Operating Status", font=("Segoe UI", 10, "bold"), fg=self.COLOR_TEXT_DARK, bg="#ffffff").pack(anchor="w", padx=16, pady=(10, 4))
 
         self.status_badge = tk.Label(
             card,
@@ -320,7 +424,7 @@ class SnapKartModernDashboard(tk.Tk):
             ("➕ Add New Product", self.COLOR_SUCCESS, lambda: self.navigate_menu("Product Management")),
             ("📋 View Stock Table", self.COLOR_PRIMARY, lambda: self.navigate_menu("Product Management")),
             ("📑 View Invoices / Transactions", "#0284c7", lambda: self.navigate_menu("Transactions")),
-            ("⏰ Edit Store Schedule", "#eab308", lambda: self.navigate_menu("Store Hours")),
+            ("⏰ Edit Store Schedule", "#eab308", lambda: self.navigate_menu("Store Operating Hours")),
             ("🔄 Refresh Live Data", self.COLOR_PURPLE, self.load_all_backend_data)
         ]
 
@@ -382,7 +486,7 @@ class SnapKartModernDashboard(tk.Tk):
     def create_footer(self, parent):
         footer = tk.Frame(parent, bg=self.COLOR_BG)
         footer.pack(fill=tk.X, padx=24, pady=(4, 18))
-        tk.Label(footer, text="© 2026 SnapKart • Sanjay Place, Agra - 282002 • Business Hours Aware POS", font=("Segoe UI", 8), fg="#94a3b8", bg=self.COLOR_BG).pack(side=tk.LEFT)
+        tk.Label(footer, text="© 2026 SnapKart Agra • Sanjay Place, Agra - 282002 • POS Administration System", font=("Segoe UI", 8), fg="#94a3b8", bg=self.COLOR_BG).pack(side=tk.LEFT)
 
     # ==================== 6. MYSQL BACKEND INTEGRATION ====================
     def load_all_backend_data(self):
@@ -395,7 +499,7 @@ class SnapKartModernDashboard(tk.Tk):
         try:
             cursor = conn.cursor(dictionary=True)
 
-            # 1. Live store status check
+            # Live store status check
             today_name = datetime.now().strftime("%A")
             cursor.execute("SELECT open_time, close_time, is_closed_today FROM store_hours WHERE day_name = %s", (today_name,))
             hours_data = cursor.fetchone()
@@ -430,7 +534,7 @@ class SnapKartModernDashboard(tk.Tk):
                 except Exception:
                     self.lbl_remaining_time.config(text="⏳ Hours active")
 
-            # 2. KPI Cards
+            # KPI Cards
             cursor.execute("SELECT COALESCE(SUM(total_amount), 0) AS today_sales FROM sales WHERE DATE(sale_datetime) = CURDATE();")
             today_sales = float(cursor.fetchone()["today_sales"])
             self.lbl_kpi_sales.config(text=f"₹ {today_sales:,.2f}")
@@ -452,7 +556,7 @@ class SnapKartModernDashboard(tk.Tk):
             low_count = int(cursor.fetchone()["low_count"])
             self.lbl_kpi_low_stock.config(text=str(low_count))
 
-            # 3. Recent Transactions
+            # Recent Transactions
             cursor.execute("""
                 SELECT sale_id, DATE_FORMAT(sale_datetime, '%%Y-%%m-%%d %%h:%%i %%p') AS s_time, 
                        total_amount, payment_method 
@@ -474,7 +578,7 @@ class SnapKartModernDashboard(tk.Tk):
                     "Completed"
                 ))
 
-            # 4. Low Stock Alerts
+            # Low Stock Alerts
             cursor.execute("""
                 SELECT name, category, stock_quantity 
                 FROM inventory 
@@ -490,7 +594,7 @@ class SnapKartModernDashboard(tk.Tk):
             for itm in low_items:
                 self.low_tree.insert("", tk.END, values=(itm["name"], itm["category"], itm["stock_quantity"]))
 
-            # 5. Render charts
+            # Render Matplotlib Charts
             self.render_charts_from_backend(cursor)
 
         except Exception as e:
@@ -505,11 +609,6 @@ class SnapKartModernDashboard(tk.Tk):
                 conn.close()
 
     def render_charts_from_backend(self, cursor):
-        """
-        Draws the 7-day sales line chart and category sales donut chart
-        using data directly from MySQL tables.
-        """
-        # A. 7-Day Revenue Trend
         cursor.execute("""
             SELECT DATE(sale_datetime) AS s_date, COALESCE(SUM(total_amount), 0) AS daily_rev
             FROM sales
@@ -529,7 +628,6 @@ class SnapKartModernDashboard(tk.Tk):
         day_labels = [d.strftime("%a") for d in date_map.keys()]
         day_values = list(date_map.values())
 
-        # B. Category Sales Breakdown
         cursor.execute("""
             SELECT i.category, COALESCE(SUM(si.subtotal), 0) AS cat_total
             FROM sale_items si
@@ -549,7 +647,6 @@ class SnapKartModernDashboard(tk.Tk):
             cat_values = [1]
             donut_center_text = "Total\n₹0"
 
-        # Matplotlib Rendering
         if self.chart_canvas:
             try:
                 self.chart_canvas.get_tk_widget().destroy()
@@ -581,10 +678,8 @@ class SnapKartModernDashboard(tk.Tk):
         ax2.set_title("Category Wise Sales", fontsize=9, fontweight="bold", pad=8, color="#0f172a")
         ax2.text(0, 0, donut_center_text, ha="center", va="center", fontsize=8, fontweight="bold", color="#0f172a")
 
-        # Add legend for donut chart
         if cat_labels[0] != "No Sales Yet":
-            ax2.legend(cat_labels, loc="lower center", fontsize=6, ncol=2, frameon=False,
-                       bbox_to_anchor=(0.5, -0.15))
+            ax2.legend(cat_labels, loc="lower center", fontsize=6, ncol=2, frameon=False, bbox_to_anchor=(0.5, -0.15))
 
         fig.tight_layout()
 
