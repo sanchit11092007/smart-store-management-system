@@ -194,7 +194,7 @@ class StoreSettingsFrame(ttk.Frame):
 
 if __name__ == "__main__":
     root = tk.Tk()
-    root.title("Smart Store - Business Hours Setting Panel")
+    root.title("SnapKart - Business Hours Setting Panel")
     root.geometry("850x620")
     app = StoreSettingsFrame(root)
     root.mainloop()

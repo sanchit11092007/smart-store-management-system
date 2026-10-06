@@ -269,7 +269,7 @@ class InventoryFrame(ttk.Frame):
 # Independent run test
 if __name__ == "__main__":
     root = tk.Tk()
-    root.title("Smart Store - Inventory Management Panel")
+    root.title("SnapKart - Inventory Management Panel")
     root.geometry("900x650")
     app = InventoryFrame(root)
     root.mainloop()
